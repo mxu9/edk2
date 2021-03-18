@@ -67,6 +67,11 @@ IoRead8 (
 {
   UINT8                             Value;
 
+  if (ProbeTdGuest()) {
+    Value = TdIoRead8 (Port);
+    return Value;
+  }
+
   _ReadWriteBarrier ();
   Value = (UINT8)_inp ((UINT16)Port);
   _ReadWriteBarrier ();
@@ -95,6 +100,12 @@ IoWrite8 (
   IN      UINT8                     Value
   )
 {
+
+  if (ProbeTdGuest()) {
+    TdIoWrite8 (Port, Value);
+    return Value;
+  }
+
   _ReadWriteBarrier ();
   (UINT8)_outp ((UINT16)Port, Value);
   _ReadWriteBarrier ();
@@ -125,6 +136,12 @@ IoRead16 (
   UINT16                            Value;
 
   ASSERT ((Port & 1) == 0);
+
+  if (ProbeTdGuest()) {
+    Value = TdIoRead16 (Port);
+    return Value;
+  }
+
   _ReadWriteBarrier ();
   Value = _inpw ((UINT16)Port);
   _ReadWriteBarrier ();
@@ -155,6 +172,12 @@ IoWrite16 (
   )
 {
   ASSERT ((Port & 1) == 0);
+
+  if (ProbeTdGuest()) {
+    TdIoWrite16 (Port, Value);
+    return Value;
+  }
+
   _ReadWriteBarrier ();
   _outpw ((UINT16)Port, Value);
   _ReadWriteBarrier ();
@@ -185,6 +208,12 @@ IoRead32 (
   UINT32                            Value;
 
   ASSERT ((Port & 3) == 0);
+
+  if (ProbeTdGuest()) {
+    Value = TdIoRead32 (Port);
+    return Value;
+  }
+
   _ReadWriteBarrier ();
   Value = _inpd ((UINT16)Port);
   _ReadWriteBarrier ();
@@ -215,6 +244,12 @@ IoWrite32 (
   )
 {
   ASSERT ((Port & 3) == 0);
+
+  if (ProbeTdGuest()) {
+    TdIoWrite32 (Port, Value);
+    return Value;
+  }
+
   _ReadWriteBarrier ();
   _outpd ((UINT16)Port, Value);
   _ReadWriteBarrier ();

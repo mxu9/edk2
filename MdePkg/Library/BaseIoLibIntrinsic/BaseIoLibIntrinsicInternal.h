@@ -17,5 +17,8 @@
 #include <Library/IoLib.h>
 #include <Library/BaseLib.h>
 #include <Library/DebugLib.h>
+#include <Library/TdxLib.h>
+#include <Library/TdxProbeLib.h>
+#include "IoLibTdx.h"
 
 #endif

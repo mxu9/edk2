@@ -40,6 +40,11 @@ IoRead8 (
 {
   UINT8   Data;
 
+  if (ProbeTdGuest()) {
+    Data = TdIoRead8 (Port);
+    return Data;
+  }
+
   __asm__ __volatile__ ("inb %w1,%b0" : "=a" (Data) : "d" ((UINT16)Port));
   return Data;
 }
@@ -66,6 +71,10 @@ IoWrite8 (
   IN      UINT8                     Value
   )
 {
+  if (ProbeTdGuest()) {
+    TdIoWrite8 (Port, Value);
+    return Value;
+  }
   __asm__ __volatile__ ("outb %b0,%w1" : : "a" (Value), "d" ((UINT16)Port));
   return Value;;
 }
@@ -94,6 +103,12 @@ IoRead16 (
   UINT16   Data;
 
   ASSERT ((Port & 1) == 0);
+
+  if (ProbeTdGuest()) {
+    Data = TdIoRead16 (Port);
+    return Data;
+  }
+
   __asm__ __volatile__ ("inw %w1,%w0" : "=a" (Data) : "d" ((UINT16)Port));
   return Data;
 }
@@ -122,6 +137,12 @@ IoWrite16 (
   )
 {
   ASSERT ((Port & 1) == 0);
+
+  if (ProbeTdGuest()) {
+    TdIoWrite16 (Port, Value);
+    return Value;
+  }
+
   __asm__ __volatile__ ("outw %w0,%w1" : : "a" (Value), "d" ((UINT16)Port));
   return Value;;
 }
@@ -150,6 +171,12 @@ IoRead32 (
   UINT32   Data;
 
   ASSERT ((Port & 3) == 0);
+
+  if (ProbeTdGuest()) {
+    Data = TdIoRead32 (Port);
+    return Data;
+  }
+
   __asm__ __volatile__ ("inl %w1,%0" : "=a" (Data) : "d" ((UINT16)Port));
   return Data;
 }
@@ -178,6 +205,12 @@ IoWrite32 (
   )
 {
   ASSERT ((Port & 3) == 0);
+
+  if (ProbeTdGuest()) {
+    IoWrite32 (Port, Value);
+    return Value;
+  }
+
   __asm__ __volatile__ ("outl %0,%w1" : : "a" (Value), "d" ((UINT16)Port));
   return Value;
 }

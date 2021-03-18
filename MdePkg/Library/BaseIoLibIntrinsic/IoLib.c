@@ -83,6 +83,11 @@ MmioRead8 (
 {
   UINT8                             Value;
 
+  if (ProbeTdGuest()) {
+    Value = TdMmioRead8 (Address);
+    return Value;
+  }
+
   MemoryFence ();
   Value = *(volatile UINT8*)Address;
   MemoryFence ();
@@ -112,6 +117,11 @@ MmioWrite8 (
   IN      UINT8                     Value
   )
 {
+  if (ProbeTdGuest()) {
+    TdMmioWrite8 (Address, Value);
+    return Value;
+  }
+
   MemoryFence ();
   *(volatile UINT8*)Address = Value;
   MemoryFence ();
@@ -143,6 +153,11 @@ MmioRead16 (
   UINT16                            Value;
 
   ASSERT ((Address & 1) == 0);
+
+  if (ProbeTdGuest()) {
+    Value = TdMmioRead16 (Address);
+    return Value;
+  }
 
   MemoryFence ();
   Value = *(volatile UINT16*)Address;
@@ -176,6 +191,11 @@ MmioWrite16 (
 {
   ASSERT ((Address & 1) == 0);
 
+  if (ProbeTdGuest()) {
+    TdMmioWrite16 (Address, Value);
+    return Value;
+  }
+
   MemoryFence ();
   *(volatile UINT16*)Address = Value;
   MemoryFence ();
@@ -207,6 +227,11 @@ MmioRead32 (
   UINT32                            Value;
 
   ASSERT ((Address & 3) == 0);
+
+  if (ProbeTdGuest()) {
+    Value = TdMmioRead32 (Address);
+    return Value;
+  }
 
   MemoryFence ();
   Value = *(volatile UINT32*)Address;
@@ -240,6 +265,11 @@ MmioWrite32 (
 {
   ASSERT ((Address & 3) == 0);
 
+  if (ProbeTdGuest()) {
+    TdMmioWrite32 (Address, Value);
+    return Value;
+  }
+
   MemoryFence ();
   *(volatile UINT32*)Address = Value;
   MemoryFence ();
@@ -272,6 +302,11 @@ MmioRead64 (
 
   ASSERT ((Address & 7) == 0);
 
+  if (ProbeTdGuest()) {
+    Value = TdMmioRead64 (Address);
+    return Value;
+  }
+
   MemoryFence ();
   Value = *(volatile UINT64*)Address;
   MemoryFence ();
@@ -301,6 +336,11 @@ MmioWrite64 (
   )
 {
   ASSERT ((Address & 7) == 0);
+
+  if (ProbeTdGuest()) {
+    TdMmioWrite64 (Address, Value);
+    return Value;
+  }
 
   MemoryFence ();
   *(volatile UINT64*)Address = Value;
