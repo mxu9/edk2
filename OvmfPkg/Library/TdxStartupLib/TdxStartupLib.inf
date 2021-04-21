@@ -84,13 +84,14 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdBfvRawDataSize
   gUefiOvmfPkgTokenSpaceGuid.PcdUseTdxEmulation
   gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptPageChunkSize
-	gUefiOvmfPkgTokenSpaceGuid.PcdTdxSetNxForStack
-	gUefiOvmfPkgTokenSpaceGuid.PcdTdxPteMemoryEncryptionAddressOrMask
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxSetNxForStack
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxPteMemoryEncryptionAddressOrMask
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptPartialMemorySize
 
-	//
-	// TODO check these PCDs' impact on Ovmf
-	//
-	gEfiMdeModulePkgTokenSpaceGuid.PcdSetNxForStack               ## CONSUMES
+  //
+  // TODO check these PCDs' impact on Ovmf
+  //
+  gEfiMdeModulePkgTokenSpaceGuid.PcdSetNxForStack               ## CONSUMES
   gEfiMdeModulePkgTokenSpaceGuid.PcdDxeIplBuildPageTables       ## CONSUMES
   gEfiMdeModulePkgTokenSpaceGuid.PcdCpuStackGuard               ## CONSUMES
   gEfiMdeModulePkgTokenSpaceGuid.PcdUse1GPageTable              ## SOMETIMES_CONSUMES

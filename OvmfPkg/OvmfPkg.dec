@@ -342,6 +342,7 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdTdxSetNxForStack|FALSE|BOOLEAN|0x5b
   gUefiOvmfPkgTokenSpaceGuid.PcdTdxPteMemoryEncryptionAddressOrMask|0|UINT64|0x5c
 
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptPartialMemorySize|0|UINT64|0x5d
 
 [PcdsDynamic, PcdsDynamicEx]
   gUefiOvmfPkgTokenSpaceGuid.PcdEmuVariableEvent|0|UINT64|2

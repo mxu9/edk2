@@ -41,6 +41,8 @@
   DEFINE TDX_IGNORE_VE_HLT       = FALSE
   DEFINE TDX_EMULATION_ENABLE    = FALSE
   DEFINE TDX_SUPPORT             = TRUE
+  DEFINE TDX_MEM_PARTIAL_ACCEPT  = 0
+
   # Network definition
   #
   DEFINE NETWORK_TLS_ENABLE             = FALSE
@@ -606,7 +608,8 @@
 !endif
   # 32M
   gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptPageChunkSize|0x2000000
-
+  # Accept memory size.
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptPartialMemorySize|$(TDX_MEM_PARTIAL_ACCEPT)
   # Noexec settings for DXE.
   # TDX doesn't allow us to change EFER so make sure these are disabled
   gEfiMdeModulePkgTokenSpaceGuid.PcdImageProtectionPolicy|0x00000000
