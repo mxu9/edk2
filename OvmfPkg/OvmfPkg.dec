@@ -313,6 +313,38 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdSevLaunchSecretBase|0x0|UINT32|0x42
   gUefiOvmfPkgTokenSpaceGuid.PcdSevLaunchSecretSize|0x0|UINT32|0x43
 
+  ## The base address and size of the Td mailbox area. The Td guest
+  #  firmware is designed to publish a multiprocessor-wakeup structure
+  #  to let the guest bootstrap process wake up guest application
+  #  processors with a Td mailbox.
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdMailboxBase|0|UINT32|0x46
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdMailboxSize|0|UINT32|0x47
+
+  ## The base address and size of the Td Hob list. It is used to pass
+  #  the information from VMM to Td guest firmware.
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdHobBase|0|UINT32|0x48
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdHobSize|0|UINT32|0x49
+
+  ## The base address of the Td Boot Firmware Colume (BFV).
+  gUefiOvmfPkgTokenSpaceGuid.PcdBfvBase|0|UINT32|0x4a
+
+  ## The offset and size of the BFV in the OVMF image.
+  gUefiOvmfPkgTokenSpaceGuid.PcdBfvRawDataOffset|0|UINT32|0x4b
+  gUefiOvmfPkgTokenSpaceGuid.PcdBfvRawDataSize|0|UINT32|0x4c
+
+  ## The base address of the Td Configuration Firmware Colume (CFV).
+  #  Td guest firware include a CFV that is separated from the Boot
+  #  Firware Volume (BFV). The reason to do this is the CFV is measured
+  #  in RTMR, while the BFV is measured in MRTD.
+  gUefiOvmfPkgTokenSpaceGuid.PcdCfvBase|0|UINT32|0x4d
+
+  ## The offset and size of the CFV in the OVMF image.
+  gUefiOvmfPkgTokenSpaceGuid.PcdCfvRawDataOffset|0|UINT32|0x4e
+  gUefiOvmfPkgTokenSpaceGuid.PcdCfvRawDataSize|0|UINT32|0x4f
+
+  ## The size of the OVMF image in KB
+  gUefiOvmfPkgTokenSpaceGuid.PcdOvmfImageSizeInKb|0|UINT32|0x50
+
 [PcdsDynamic, PcdsDynamicEx]
   gUefiOvmfPkgTokenSpaceGuid.PcdEmuVariableEvent|0|UINT64|2
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfFlashVariablesEnable|FALSE|BOOLEAN|0x10
