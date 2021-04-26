@@ -319,10 +319,6 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdTdMailboxSize|0|UINT32|0x47
   gUefiOvmfPkgTokenSpaceGuid.PcdTdHobBase|0|UINT32|0x48
   gUefiOvmfPkgTokenSpaceGuid.PcdTdHobSize|0|UINT32|0x49
-  gUefiOvmfPkgTokenSpaceGuid.PcdTdTempStackBase|0|UINT32|0x4a
-  gUefiOvmfPkgTokenSpaceGuid.PcdTdTempStackSize|0|UINT32|0x4b
-  gUefiOvmfPkgTokenSpaceGuid.PcdTdTempHeapBase|0|UINT32|0x4c
-  gUefiOvmfPkgTokenSpaceGuid.PcdTdTempHeapSize|0|UINT32|0x4d
 
   gUefiOvmfPkgTokenSpaceGuid.PcdCfvBase|0|UINT32|0x4e
   gUefiOvmfPkgTokenSpaceGuid.PcdCfvRawDataOffset|0|UINT32|0x4f

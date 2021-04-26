@@ -48,10 +48,6 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdTdMailboxSize
   gUefiOvmfPkgTokenSpaceGuid.PcdTdHobBase
   gUefiOvmfPkgTokenSpaceGuid.PcdTdHobSize
-  gUefiOvmfPkgTokenSpaceGuid.PcdTdTempStackBase
-  gUefiOvmfPkgTokenSpaceGuid.PcdTdTempStackSize
-  gUefiOvmfPkgTokenSpaceGuid.PcdTdTempHeapBase
-  gUefiOvmfPkgTokenSpaceGuid.PcdTdTempHeapSize
 
   gUefiOvmfPkgTokenSpaceGuid.PcdCfvBase
   gUefiOvmfPkgTokenSpaceGuid.PcdCfvRawDataOffset
