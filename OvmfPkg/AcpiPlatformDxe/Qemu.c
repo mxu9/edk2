@@ -17,6 +17,10 @@
 #include <Library/PcdLib.h>
 #include <Library/OrderedCollectionLib.h>
 #include <IndustryStandard/Acpi.h>
+#include <Library/TdvfPlatformLib.h>
+#include <IndustryStandard/AcpiTdx.h>
+
+STATIC EFI_HOB_PLATFORM_INFO *mPlatformInfoHob = NULL;
 
 BOOLEAN
 QemuDetected (
@@ -30,28 +34,6 @@ QemuDetected (
   return TRUE;
 }
 
-
-STATIC
-UINTN
-CountBits16 (
-  UINT16 Mask
-  )
-{
-  //
-  // For all N >= 1, N bits are enough to represent the number of bits set
-  // among N bits. It's true for N == 1. When adding a new bit (N := N+1),
-  // the maximum number of possibly set bits increases by one, while the
-  // representable maximum doubles.
-  //
-  Mask = ((Mask & 0xAAAA) >> 1) + (Mask & 0x5555);
-  Mask = ((Mask & 0xCCCC) >> 2) + (Mask & 0x3333);
-  Mask = ((Mask & 0xF0F0) >> 4) + (Mask & 0x0F0F);
-  Mask = ((Mask & 0xFF00) >> 8) + (Mask & 0x00FF);
-
-  return Mask;
-}
-
-
 STATIC
 EFI_STATUS
 EFIAPI
@@ -63,7 +45,6 @@ QemuInstallAcpiMadtTable (
   )
 {
   UINTN                                               CpuCount;
-  UINTN                                               PciLinkIsoCount;
   UINTN                                               NewBufferSize;
   EFI_ACPI_1_0_MULTIPLE_APIC_DESCRIPTION_TABLE_HEADER *Madt;
   EFI_ACPI_1_0_PROCESSOR_LOCAL_APIC_STRUCTURE         *LocalApic;
@@ -73,6 +54,7 @@ QemuInstallAcpiMadtTable (
   VOID                                                *Ptr;
   UINTN                                               Loop;
   EFI_STATUS                                          Status;
+  ACPI_MADT_MPWK_STRUCT                               *MadtMpWk;
 
   ASSERT (AcpiTableBufferSize >= sizeof (EFI_ACPI_DESCRIPTION_HEADER));
 
@@ -80,18 +62,14 @@ QemuInstallAcpiMadtTable (
   CpuCount = QemuFwCfgRead16 ();
   ASSERT (CpuCount >= 1);
 
-  //
-  // Set Level-tiggered, Active High for these identity mapped IRQs. The bitset
-  // corresponds to the union of all possible interrupt assignments for the LNKA,
-  // LNKB, LNKC, LNKD PCI interrupt lines. See the DSDT.
-  //
-  PciLinkIsoCount = CountBits16 (PcdGet16 (Pcd8259LegacyModeEdgeLevel));
-
+#define NUM_8259_IRQS                   16
   NewBufferSize = 1                     * sizeof (*Madt) +
                   CpuCount              * sizeof (*LocalApic) +
                   1                     * sizeof (*IoApic) +
-                  (1 + PciLinkIsoCount) * sizeof (*Iso) +
+                  NUM_8259_IRQS         * sizeof (*Iso) +
                   1                     * sizeof (*LocalApicNmi);
+
+  NewBufferSize += sizeof(ACPI_MADT_MPWK_STRUCT);
 
   Madt = AllocatePool (NewBufferSize);
   if (Madt == NULL) {
@@ -130,31 +108,21 @@ QemuInstallAcpiMadtTable (
   Iso = Ptr;
   Iso->Type                        = EFI_ACPI_1_0_INTERRUPT_SOURCE_OVERRIDE;
   Iso->Length                      = sizeof (*Iso);
-  Iso->Bus                         = 0x00; // ISA
-  Iso->Source                      = 0x00; // IRQ0
+  Iso->Bus                         = 0x00;    // ISA
+  Iso->Source                      = 0x00;    // IRQ0
   Iso->GlobalSystemInterruptVector = 0x00000002;
-  Iso->Flags                       = 0x0000; // Conforms to specs of the bus
+  Iso->Flags                       = 0x0005;  // Edge-triggered, Active High
   ++Iso;
 
-  //
-  // Set Level-triggered, Active High for all possible PCI link targets.
-  //
-  for (Loop = 0; Loop < 16; ++Loop) {
-    if ((PcdGet16 (Pcd8259LegacyModeEdgeLevel) & (1 << Loop)) == 0) {
-      continue;
-    }
+  for (Loop = 1; Loop < NUM_8259_IRQS; ++Loop) {
     Iso->Type                        = EFI_ACPI_1_0_INTERRUPT_SOURCE_OVERRIDE;
     Iso->Length                      = sizeof (*Iso);
     Iso->Bus                         = 0x00; // ISA
     Iso->Source                      = (UINT8) Loop;
     Iso->GlobalSystemInterruptVector = (UINT32) Loop;
-    Iso->Flags                       = 0x000D; // Level-triggered, Active High
+    Iso->Flags                       = 0x0005; // Edge-triggered, Active High
     ++Iso;
   }
-  ASSERT (
-    (UINTN) (Iso - (EFI_ACPI_1_0_INTERRUPT_SOURCE_OVERRIDE_STRUCTURE *)Ptr) ==
-      1 + PciLinkIsoCount
-    );
   Ptr = Iso;
 
   LocalApicNmi = Ptr;
@@ -171,6 +139,17 @@ QemuInstallAcpiMadtTable (
   //
   LocalApicNmi->LocalApicInti   = 0x01;
   Ptr = LocalApicNmi + 1;
+
+  MadtMpWk = Ptr;
+  MadtMpWk->Type = ACPI_MADT_MPWK_STRUCT_TYPE;
+  MadtMpWk->Length = sizeof(ACPI_MADT_MPWK_STRUCT);
+  MadtMpWk->MailBoxVersion = 1;
+  MadtMpWk->Reserved2 = 0;
+  MadtMpWk->MailBoxAddress = PcdGet64 (PcdTdRelocatedMailboxBase);
+  Ptr = MadtMpWk + 1;
+
+  DEBUG ((DEBUG_INFO, "%a:%d:ACPI setting mailbox to 0x%x 0x%x\n", __func__, __LINE__,
+    MadtMpWk->MailBoxAddress, PcdGet64 (PcdTdRelocatedMailboxBase)));
 
   ASSERT ((UINTN) ((UINT8 *)Ptr - (UINT8 *)Madt) == NewBufferSize);
   Status = InstallAcpiTable (AcpiProtocol, Madt, NewBufferSize, TableKey);
@@ -355,13 +334,18 @@ GetSuspendStates (
   //
   // check for overrides
   //
-  Status = QemuFwCfgFindFile ("etc/system-states", &FwCfgItem, &FwCfgSize);
-  if (Status != RETURN_SUCCESS || FwCfgSize != sizeof SystemStates) {
-    DEBUG ((DEBUG_INFO, "ACPI using S3/S4 defaults\n"));
-    return;
+  if (mPlatformInfoHob) {
+    CopyMem(SystemStates, mPlatformInfoHob->SystemStates, sizeof SystemStates);
+    DEBUG ((DEBUG_INFO, ">>>> GetSuspendStates mPlatformInfoHob\n"));
+  } else {
+    Status = QemuFwCfgFindFile ("etc/system-states", &FwCfgItem, &FwCfgSize);
+    if (Status != RETURN_SUCCESS || FwCfgSize != sizeof SystemStates) {
+      DEBUG ((DEBUG_INFO, "ACPI using S3/S4 defaults\n"));
+      return;
+    }
+    QemuFwCfgSelectItem (FwCfgItem);
+    QemuFwCfgReadBytes (sizeof SystemStates, SystemStates);
   }
-  QemuFwCfgSelectItem (FwCfgItem);
-  QemuFwCfgReadBytes (sizeof SystemStates, SystemStates);
 
   //
   // Each byte corresponds to a system state. In each byte, the MSB tells us
@@ -489,6 +473,12 @@ QemuInstallAcpiTable (
 {
   EFI_ACPI_DESCRIPTION_HEADER        *Hdr;
   EFI_ACPI_TABLE_INSTALL_ACPI_TABLE  TableInstallFunction;
+  EFI_HOB_GUID_TYPE                    *GuidHob;
+
+  GuidHob = GetFirstGuidHob(&gUefiOvmfPkgTdxPlatformGuid);
+  if (GuidHob) {
+    mPlatformInfoHob = (EFI_HOB_PLATFORM_INFO *)GET_GUID_HOB_DATA (GuidHob);
+  }
 
   Hdr = (EFI_ACPI_DESCRIPTION_HEADER*) AcpiTableBuffer;
   switch (Hdr->Signature) {

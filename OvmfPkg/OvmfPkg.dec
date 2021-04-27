@@ -118,6 +118,7 @@
   gQemuKernelLoaderFsMediaGuid          = {0x1428f772, 0xb64a, 0x441e, {0xb8, 0xc3, 0x9e, 0xbd, 0xd7, 0xf8, 0x93, 0xc7}}
   gGrubFileGuid                         = {0xb5ae312c, 0xbc8a, 0x43b1, {0x9c, 0x62, 0xeb, 0xb8, 0x26, 0xdd, 0x5d, 0x07}}
   gConfidentialComputingSecretGuid      = {0xadf956ad, 0xe98c, 0x484c, {0xae, 0x11, 0xb5, 0x1c, 0x7d, 0x33, 0x64, 0x47}}
+  gUefiOvmfPkgTdxPlatformGuid           = {0xdec9b486, 0x1f16, 0x47c7, {0x8f, 0x68, 0xdf, 0x1a, 0x41, 0x88, 0x8b, 0xa5}}
 
 [Ppis]
   # PPI whose presence in the PPI database signals that the TPM base address
@@ -313,6 +314,35 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdSevLaunchSecretBase|0x0|UINT32|0x42
   gUefiOvmfPkgTokenSpaceGuid.PcdSevLaunchSecretSize|0x0|UINT32|0x43
 
+  ## PCD used by TDX
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdMailboxBase|0|UINT32|0x46
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdMailboxSize|0|UINT32|0x47
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdHobBase|0|UINT32|0x48
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdHobSize|0|UINT32|0x49
+
+  gUefiOvmfPkgTokenSpaceGuid.PcdCfvBase|0|UINT32|0x4e
+  gUefiOvmfPkgTokenSpaceGuid.PcdCfvRawDataOffset|0|UINT32|0x4f
+  gUefiOvmfPkgTokenSpaceGuid.PcdCfvRawDataSize|0|UINT32|0x50
+
+  gUefiOvmfPkgTokenSpaceGuid.PcdBfvBase|0|UINT32|0x51
+  gUefiOvmfPkgTokenSpaceGuid.PcdBfvRawDataOffset|0|UINT32|0x52
+  gUefiOvmfPkgTokenSpaceGuid.PcdBfvRawDataSize|0|UINT32|0x53
+
+  gUefiOvmfPkgTokenSpaceGuid.PcdIgnoreVeHalt|FALSE|BOOLEAN|0x54
+  gUefiOvmfPkgTokenSpaceGuid.PcdUseTdxEmulation|0x0|UINT32|0x55
+
+  gUefiOvmfPkgTokenSpaceGuid.PcdUseTdxMsr|TRUE|BOOLEAN|0x56
+
+  gUefiOvmfPkgTokenSpaceGuid.PcdOvmfImageSizeInKb|0|UINT32|0x58
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptChunkSize|0x2000|UINT64|0x59
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxSetNxForStack|FALSE|BOOLEAN|0x5b
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxPteMemoryEncryptionAddressOrMask|0|UINT64|0x5c
+
+  ## The Tdx accept page size. 0x1000,0x200000
+  #
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptPageSize|0x1000|UINT64|0x5d
+
+
 [PcdsDynamic, PcdsDynamicEx]
   gUefiOvmfPkgTokenSpaceGuid.PcdEmuVariableEvent|0|UINT64|2
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfFlashVariablesEnable|FALSE|BOOLEAN|0x10
@@ -347,6 +377,14 @@
   #
   #  This PCD is only accessed if PcdSmmSmramRequire is TRUE (see below).
   gUefiOvmfPkgTokenSpaceGuid.PcdQ35SmramAtDefaultSmbase|FALSE|BOOLEAN|0x34
+
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdRelocatedMailboxBase|0|UINT64|0x102
+
+  ## This PCD records LAML field in TDX EVENTLOG ACPI table.
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxEventlogAcpiTableLaml|0|UINT32|0x103
+
+  ## This PCD records LASA field in TDX EVENTLOG ACPI table.
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxEventlogAcpiTableLasa|0|UINT64|0x104
 
 [PcdsFeatureFlag]
   gUefiOvmfPkgTokenSpaceGuid.PcdQemuBootOrderPciTranslation|TRUE|BOOLEAN|0x1c
