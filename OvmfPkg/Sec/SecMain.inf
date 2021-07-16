@@ -28,6 +28,7 @@
   Ia32/SecEntry.nasm
 
 [Sources.X64]
+  IntelTdx.c
   X64/SecEntry.nasm
 
 [Packages]
@@ -52,6 +53,9 @@
   LocalApicLib
   CpuExceptionHandlerLib
 
+[LibraryClasses.X64]
+  TdxLib
+
 [Ppis]
   gEfiTemporaryRamSupportPpiGuid                # PPI ALWAYS_PRODUCED
 
@@ -71,6 +75,10 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfDecompressionScratchEnd
   gEfiMdeModulePkgTokenSpaceGuid.PcdInitValueInTempStack
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfConfidentialComputingWorkAreaHeader
+  gUefiOvmfPkgTokenSpaceGuid.PcdOvmfWorkAreaBase
+  gUefiOvmfPkgTokenSpaceGuid.PcdOvmfSecGhcbBackupBase
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptChunkSize
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptPageSize
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfWorkAreaBase
 
 [FeaturePcd]
