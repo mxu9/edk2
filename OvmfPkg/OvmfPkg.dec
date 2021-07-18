@@ -333,8 +333,16 @@
 
   ## Size of the Ovmf image in KB
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfImageSizeInKb|0|UINT32|0x4d
+
   ## Ignore the VE halt in Tdx
   gUefiOvmfPkgTokenSpaceGuid.PcdIgnoreVeHalt|FALSE|BOOLEAN|0x4e
+
+  ## TODO
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptChunkSize|0x2000000|UINT64|0x4f
+
+  ## The Tdx accept page size. 0x1000(4k),0x200000(2M)
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptPageSize|0x1000|UINT64|0x50
+
 
 [PcdsDynamic, PcdsDynamicEx]
   gUefiOvmfPkgTokenSpaceGuid.PcdEmuVariableEvent|0|UINT64|2
