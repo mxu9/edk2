@@ -29,8 +29,11 @@
 #include <Library/MemEncryptSevLib.h>
 #include <Register/Amd/Ghcb.h>
 #include <Register/Amd/Msr.h>
-
+#include <IndustryStandard/Tdx.h>
+#include <Library/TdxLib.h>
+#include <Library/TdxProbeLib.h>
 #include <Ppi/TemporaryRamSupport.h>
+#include "IntelTdx.h"
 
 #define SEC_IDT_ENTRY_COUNT  34
 
@@ -833,6 +836,93 @@ SevEsIsEnabled (
 
 VOID
 EFIAPI
+InitializeSecCoreData(
+  IN EFI_SEC_PEI_HAND_OFF             *SecCoreData,
+  IN EFI_FIRMWARE_VOLUME_HEADER       *BootFv,
+  IN VOID                             *TopOfCurrentStack
+)
+{
+  //
+  // |-------------|       <-- TopOfCurrentStack
+  // |   Stack     | 32k
+  // |-------------|
+  // |    Heap     | 32k
+  // |-------------|       <-- SecCoreData.TemporaryRamBase
+  //
+
+  ASSERT ((UINTN) (PcdGet32 (PcdOvmfSecPeiTempRamBase) +
+                   PcdGet32 (PcdOvmfSecPeiTempRamSize)) ==
+          (UINTN) TopOfCurrentStack);
+
+  //
+  // Initialize SEC hand-off state
+  //
+  SecCoreData->DataSize = sizeof(EFI_SEC_PEI_HAND_OFF);
+
+  SecCoreData->TemporaryRamSize       = (UINTN) PcdGet32 (PcdOvmfSecPeiTempRamSize);
+  SecCoreData->TemporaryRamBase       = (VOID*)((UINT8 *)TopOfCurrentStack - SecCoreData->TemporaryRamSize);
+
+  SecCoreData->PeiTemporaryRamBase    = SecCoreData->TemporaryRamBase;
+  SecCoreData->PeiTemporaryRamSize    = SecCoreData->TemporaryRamSize >> 1;
+
+  SecCoreData->StackBase              = (UINT8 *)SecCoreData->TemporaryRamBase + SecCoreData->PeiTemporaryRamSize;
+  SecCoreData->StackSize              = SecCoreData->TemporaryRamSize >> 1;
+
+  SecCoreData->BootFirmwareVolumeBase = BootFv;
+  SecCoreData->BootFirmwareVolumeSize = (UINTN) BootFv->FvLength;
+}
+
+#if defined (MDE_CPU_X64)
+
+EFI_STATUS
+EFIAPI
+TdxInitialize (
+  IN VOID                             *Context,
+  IN EFI_FIRMWARE_VOLUME_HEADER       *BootFv,
+  IN VOID                             *TopOfCurrentStack
+  )
+{
+  EFI_SEC_PEI_HAND_OFF        *SecCoreData;
+  SEC_IDT_TABLE               IdtTableInStack;
+  IA32_DESCRIPTOR             IdtDescriptor;
+  UINT32                      Index;
+
+  SecCoreData = (EFI_SEC_PEI_HAND_OFF *)Context;
+
+  IdtTableInStack.PeiService = NULL;
+  for (Index = 0; Index < SEC_IDT_ENTRY_COUNT; Index ++) {
+    CopyMem (&IdtTableInStack.IdtTable[Index], &mIdtEntryTemplate, sizeof (mIdtEntryTemplate));
+  }
+
+  IdtDescriptor.Base  = (UINTN)&IdtTableInStack.IdtTable;
+  IdtDescriptor.Limit = (UINT16)(sizeof (IdtTableInStack.IdtTable) - 1);
+
+  AsmWriteIdtr(&IdtDescriptor);
+  InitializeCpuExceptionHandlers(NULL);
+
+  //
+  // Initialize SEC hand-off state
+  //
+  InitializeSecCoreData(SecCoreData, BootFv, TopOfCurrentStack);
+
+  IoWrite8 (0x21, 0xff);
+  IoWrite8 (0xA1, 0xff);
+
+  //
+  // Initialize Local APIC Timer hardware and disable Local APIC Timer
+  // interrupts before initializing the Debug Agent and the debug timer is
+  // enabled.
+  //
+  InitializeApicTimer (0, MAX_UINT32, TRUE, 5);
+  DisableApicTimerInterrupt ();
+
+  return EFI_SUCCESS;
+}
+
+#endif
+
+VOID
+EFIAPI
 SecCoreStartupWithStack (
   IN EFI_FIRMWARE_VOLUME_HEADER       *BootFv,
   IN VOID                             *TopOfCurrentStack
@@ -843,6 +933,33 @@ SecCoreStartupWithStack (
   IA32_DESCRIPTOR             IdtDescriptor;
   UINT32                      Index;
   volatile UINT8              *Table;
+
+#if defined (MDE_CPU_X64)
+  EFI_STATUS                  Status;
+
+  if (TdxIsEnabled ()) {
+
+    Status = TdxInitialize (&SecCoreData, BootFv, TopOfCurrentStack);
+    if (EFI_ERROR (Status)) {
+      CpuDeadLoop ();
+    }
+
+    DEBUG ((DEBUG_INFO,
+      "SecCoreStartupWithStack(0x%x, 0x%x)\n",
+      (UINT32)(UINTN)BootFv,
+      (UINT32)(UINTN)TopOfCurrentStack
+      ));
+
+    Status = TdxStartup (&SecCoreData, BootFv, TopOfCurrentStack);
+    if (EFI_ERROR (Status)) {
+      CpuDeadLoop ();
+    }
+
+    ProcessLibraryConstructorList (NULL, NULL);
+
+    SecStartupPhase2 (&SecCoreData);
+  }
+#endif
 
   //
   // To ensure SMM can't be compromised on S3 resume, we must force re-init of
