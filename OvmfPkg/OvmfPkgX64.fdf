@@ -163,6 +163,7 @@ INF  MdeModulePkg/Core/Pei/PeiMain.inf
 INF  MdeModulePkg/Universal/PCD/Pei/Pcd.inf
 INF  MdeModulePkg/Universal/ReportStatusCodeRouter/Pei/ReportStatusCodeRouterPei.inf
 INF  MdeModulePkg/Universal/StatusCodeHandler/Pei/StatusCodeHandlerPei.inf
+INF  UefiCpuPkg/CpuMpPei/CpuMpPei.inf
 INF  OvmfPkg/PlatformPei/PlatformPei.inf
 INF  MdeModulePkg/Core/DxeIplPeim/DxeIpl.inf
 INF  UefiCpuPkg/Universal/Acpi/S3Resume2Pei/S3Resume2Pei.inf
@@ -171,7 +172,6 @@ INF  MdeModulePkg/Universal/FaultTolerantWritePei/FaultTolerantWritePei.inf
 INF  MdeModulePkg/Universal/Variable/Pei/VariablePei.inf
 INF  OvmfPkg/SmmAccess/SmmAccessPei.inf
 !endif
-INF  UefiCpuPkg/CpuMpPei/CpuMpPei.inf
 
 !if $(TPM_ENABLE) == TRUE
 INF  OvmfPkg/Tcg/TpmMmioSevDecryptPei/TpmMmioSevDecryptPei.inf
