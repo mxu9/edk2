@@ -534,6 +534,10 @@ GetMaxOptionRomSize (
 
   MaxOptionRomSize = 0;
 
+  if (TdIsEnabled ()) {
+    return 0;
+  }
+
   //
   // Go through bridges to reach all devices
   //
