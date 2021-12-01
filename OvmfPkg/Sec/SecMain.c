@@ -33,6 +33,9 @@
 #include <Library/TdxLib.h>
 #include <Ppi/TemporaryRamSupport.h>
 #include "IntelTdx.h"
+#ifdef INTEL_TDX_CONFIG_B
+#include <Library/TdxStartupLib.h>
+#endif
 
 #define SEC_IDT_ENTRY_COUNT  34
 
@@ -1057,6 +1060,18 @@ SecCoreStartupWithStack (
   //
   InitializeApicTimer (0, MAX_UINT32, TRUE, 5);
   DisableApicTimerInterrupt ();
+
+#ifdef INTEL_TDX_CONFIG_B
+  if (SecTdxIsEnabled ()) {
+    TdxStartup (&SecCoreData);
+
+    //
+    // Never arrived here
+    //
+    ASSERT(FALSE);
+    CpuDeadLoop();
+  }
+#endif
 
   //
   // Initialize Debug Agent to support source level debug in SEC/PEI phases before memory ready.
