@@ -60,3 +60,6 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdTdRelocatedMailboxBase
   gUefiCpuPkgTokenSpaceGuid.PcdCpuLocalApicBaseAddress
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfFdBaseAddress
+  gEfiMdeModulePkgTokenSpaceGuid.PcdIa32EferChangeAllowed
+  gEfiMdePkgTokenSpaceGuid.PcdConfidentialComputingGuestAttr
+  gEfiMdeModulePkgTokenSpaceGuid.PcdTdxSharedBitMask
