@@ -12,7 +12,7 @@
 #include <Uefi/UefiBaseType.h>
 #include <Library/BaseLib.h>
 #include <Library/DebugLib.h>
-#include <Library/HobLib.h>
+#include <Library/PrePiLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <IndustryStandard/UefiTcgPlatform.h>
 #include <Library/MemoryAllocationLib.h>
@@ -24,6 +24,12 @@
 #include "IntelTdx.h"
 
 #define ALIGNED_2MB_MASK 0x1fffff
+
+#define GET_HOB_TYPE(Hob)     ((Hob).Header->HobType)
+#define GET_HOB_LENGTH(Hob)   ((Hob).Header->HobLength)
+#define GET_NEXT_HOB(Hob)     ((Hob).Raw + GET_HOB_LENGTH (Hob))
+#define END_OF_HOB_LIST(Hob)  (GET_HOB_TYPE (Hob) == EFI_HOB_TYPE_END_OF_HOB_LIST)
+
 
 /**
   BSP call this function to accept memory in a range.
@@ -514,6 +520,14 @@ ProcessHobList (
   EFI_PEI_HOB_POINTERS        Hob;
   EFI_PHYSICAL_ADDRESS        PhysicalEnd;
 
+#ifdef INTEL_TDX_CONFIG_B
+  UINT64                      ResourceLength;
+  EFI_PHYSICAL_ADDRESS        LowMemoryStart;
+  UINT64                      LowMemoryLength;
+
+  LowMemoryLength = 0;
+#endif
+
   Status = EFI_SUCCESS;
   ASSERT (VmmHobList != NULL);
   Hob.Raw = (UINT8 *) VmmHobList;
@@ -534,6 +548,17 @@ ProcessHobList (
 
         PhysicalEnd = Hob.ResourceDescriptor->PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
 
+#ifdef INTEL_TDX_CONFIG_B
+        ResourceLength = Hob.ResourceDescriptor->ResourceLength;
+
+        if (PhysicalEnd <= BASE_4GB) {
+          if (ResourceLength > LowMemoryLength) {
+            LowMemoryStart = Hob.ResourceDescriptor->PhysicalStart;
+            LowMemoryLength = ResourceLength;
+          }
+        }
+#endif
+
         Status = MpAcceptMemoryResourceRange (
             Hob.ResourceDescriptor->PhysicalStart,
             PhysicalEnd);
@@ -544,6 +569,26 @@ ProcessHobList (
     }
     Hob.Raw = GET_NEXT_HOB (Hob);
   }
+
+#ifdef INTEL_TDX_CONFIG_B
+  //
+  // HobLib doesn't like HobStart at address 0 so adjust is needed
+  //
+  if (LowMemoryStart == 0) {
+    LowMemoryStart += EFI_PAGE_SIZE;
+    LowMemoryLength -= EFI_PAGE_SIZE;
+  }
+
+  DEBUG ((DEBUG_INFO, "LowMemory Start and End: %x, %x\n", LowMemoryStart, LowMemoryStart + LowMemoryLength));
+  HobConstructor (
+    (VOID *) LowMemoryStart,
+    LowMemoryLength,
+    (VOID *) LowMemoryStart,
+    (VOID *) (LowMemoryStart + LowMemoryLength)
+    );
+
+  SetHobList ((VOID *)(UINT64)LowMemoryStart);
+#endif
 
   return Status;
 }

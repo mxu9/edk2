@@ -30,4 +30,15 @@ EFIAPI
 ProcessTdxHobList (
   VOID
   );
+
+
+#ifdef INTEL_TDX_CONFIG_B
+
+VOID
+EFIAPI
+TdxStartup (
+  IN VOID   *Context
+ );
+
+#endif
 #endif
