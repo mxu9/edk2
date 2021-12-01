@@ -223,6 +223,34 @@ AllocateZeroPool (
 }
 
 /**
+  Copies a buffer to an allocated buffer of type EfiBootServicesData.
+
+  Allocates the number bytes specified by AllocationSize of type EfiBootServicesData, copies
+  AllocationSize bytes from Buffer to the newly allocated buffer, and returns a pointer to the
+  allocated buffer.  If AllocationSize is 0, then a valid buffer of 0 size is returned.  If there
+  is not enough memory remaining to satisfy the request, then NULL is returned.
+
+  If Buffer is NULL, then ASSERT().
+  If AllocationSize is greater than (MAX_ADDRESS - Buffer + 1), then ASSERT().
+
+  @param  AllocationSize        The number of bytes to allocate and zero.
+  @param  Buffer                The buffer to copy to the allocated buffer.
+
+  @return A pointer to the allocated buffer or NULL if allocation fails.
+
+**/
+VOID *
+EFIAPI
+AllocateCopyPool (
+  IN UINTN       AllocationSize,
+  IN CONST VOID  *Buffer
+  )
+{
+  ASSERT (FALSE);
+  return NULL;
+}
+
+/**
   Frees a buffer that was previously allocated with one of the pool allocation functions in the
   Memory Allocation Library.
 
@@ -243,4 +271,63 @@ FreePool (
   )
 {
   // Not implemented yet
+}
+
+/**
+  Allocates one or more 4KB pages of given type MemoryType.
+
+  Allocates the number of 4KB pages of MemoryType and returns a pointer to the
+  allocated buffer.  The buffer returned is aligned on a 4KB boundary.  If Pages is 0, then NULL
+  is returned.  If there is not enough memory remaining to satisfy the request, then NULL is
+  returned.
+
+  @param  Pages                 The number of 4 KB pages to allocate.
+  @param  MemoryType            Type of memory to use for this allocation.
+
+  @return A pointer to the allocated buffer or NULL if allocation fails.
+
+**/
+VOID *
+EFIAPI
+AllocatePagesWithMemoryType (
+  IN UINTN            MemoryType,
+  IN UINTN            Pages
+  )
+{
+  EFI_PEI_HOB_POINTERS                    Hob;
+  EFI_PHYSICAL_ADDRESS                    Offset;
+
+  Hob.Raw = GetHobList ();
+
+  // Check to see if on 4k boundary
+  Offset = Hob.HandoffInformationTable->EfiFreeMemoryTop & 0xFFF;
+  if (Offset != 0) {
+    // If not aligned, make the allocation aligned.
+    Hob.HandoffInformationTable->EfiFreeMemoryTop -= Offset;
+  }
+
+  //
+  // Verify that there is sufficient memory to satisfy the allocation
+  //
+  if (Hob.HandoffInformationTable->EfiFreeMemoryTop - ((Pages * EFI_PAGE_SIZE) + sizeof (EFI_HOB_MEMORY_ALLOCATION)) < Hob.HandoffInformationTable->EfiFreeMemoryBottom) {
+    return 0;
+  } else {
+    //
+    // Update the PHIT to reflect the memory usage
+    //
+    Hob.HandoffInformationTable->EfiFreeMemoryTop -= Pages * EFI_PAGE_SIZE;
+
+    // This routine used to create a memory allocation HOB a la PEI, but that's not
+    // necessary for us.
+
+    //
+    // Create a memory allocation HOB.
+    //
+    BuildMemoryAllocationHob (
+        Hob.HandoffInformationTable->EfiFreeMemoryTop,
+        Pages * EFI_PAGE_SIZE,
+        (EFI_MEMORY_TYPE)MemoryType
+        );
+    return (VOID *)(UINTN)Hob.HandoffInformationTable->EfiFreeMemoryTop;
+  }
 }
