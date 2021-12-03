@@ -23,9 +23,94 @@
 #include <Protocol/AcpiTable.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/UefiLib.h>
+#include <Library/TdxMailboxLib.h>
 #include <Protocol/Cpu.h>
 #include <Uefi.h>
 #include <TdxAcpiTable.h>
+
+/**
+  At the beginning of system boot, a 4K-aligned, 4K-size memory (Td mailbox) is
+  pre-allocated by host VMM. BSP & APs do the page accept together in that memory
+  region.
+
+  After that TDVF is designed to relocate the mailbox to a 4K-aligned, 4K-size
+  memory block which is allocated in the ACPI Nvs memory. APs are waken up and
+  spin around the relocated mailbox for further command.
+
+  @return   EFI_PHYSICAL_ADDRESS    Address of the relocated mailbox
+**/
+EFI_PHYSICAL_ADDRESS
+EFIAPI
+RelocateMailbox (
+  VOID
+  )
+{
+  EFI_PHYSICAL_ADDRESS        Address;
+  VOID                        *ApLoopFunc;
+  UINT32                      RelocationPages;
+  MP_RELOCATION_MAP           RelocationMap;
+  MP_WAKEUP_MAILBOX           *RelocatedMailBox;
+  EFI_STATUS                  Status;
+
+  Address     = 0;
+  ApLoopFunc  = NULL;
+  ZeroMem (&RelocationMap, sizeof (RelocationMap));
+
+  //
+  // Get information needed to setup aps running in their
+  // run loop in allocated acpi reserved memory
+  // Add another page for mailbox
+  //
+  AsmGetRelocationMap (&RelocationMap);
+  if (RelocationMap.RelocateApLoopFuncAddress == 0 || RelocationMap.RelocateApLoopFuncSize == 0) {
+    DEBUG ((DEBUG_ERROR, "Failed to get the RelocationMap.\n"));
+    return 0;
+  }
+  RelocationPages  = EFI_SIZE_TO_PAGES ((UINT32)RelocationMap.RelocateApLoopFuncSize) + 1;
+
+  Status = gBS->AllocatePages (AllocateAnyPages, EfiACPIMemoryNVS, RelocationPages, &Address);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "Failed to allocate pages for MailboxRelocation. %r\n", Status));
+    return 0;
+  }
+  ZeroMem ((VOID *)Address, EFI_PAGES_TO_SIZE (RelocationPages));
+
+  ApLoopFunc = (VOID *) ((UINTN) Address + EFI_PAGE_SIZE);
+
+  CopyMem (
+    ApLoopFunc,
+    RelocationMap.RelocateApLoopFuncAddress,
+    RelocationMap.RelocateApLoopFuncSize
+    );
+
+  DEBUG ((DEBUG_INFO, "Ap Relocation: mailbox %llx, loop %p\n",
+    Address, ApLoopFunc));
+
+  //
+  // Initialize mailbox
+  //
+  RelocatedMailBox = (MP_WAKEUP_MAILBOX *)Address;
+  RelocatedMailBox->Command = MpProtectedModeWakeupCommandNoop;
+  RelocatedMailBox->ApicId = MP_CPU_PROTECTED_MODE_MAILBOX_APICID_INVALID;
+  RelocatedMailBox->WakeUpVector = 0;
+
+  //
+  // Wakup APs and have been move to the finalized run loop
+  // They will spin until guest OS wakes them
+  //
+  MpSerializeStart ();
+
+  MpSendWakeupCommand (
+    MpProtectedModeWakeupCommandWakeup,
+    (UINT64)ApLoopFunc,
+    (UINT64)RelocatedMailBox,
+    0,
+    0,
+    0);
+
+  return Address;
+}
+
 
 /**
   Alter the MADT when ACPI Table from QEMU is available.
@@ -50,6 +135,7 @@ AlterAcpiTable (
   UINTN                          NewTableKey;
   UINT8                          *NewMadtTable;
   UINTN                          NewMadtTableLength;
+  EFI_PHYSICAL_ADDRESS           RelocateMailboxAddress;
   EFI_ACPI_6_4_MULTIPROCESSOR_WAKEUP_STRUCTURE        *MadtMpWk;
   EFI_ACPI_1_0_MULTIPLE_APIC_DESCRIPTION_TABLE_HEADER *MadtHeader;
 
@@ -62,6 +148,14 @@ AlterAcpiTable (
     DEBUG ((DEBUG_ERROR, "Unable to locate ACPI SDT protocol.\n"));
     return;
   }
+
+  RelocateMailboxAddress = RelocateMailbox ();
+  if (RelocateMailboxAddress == 0) {
+    ASSERT (FALSE);
+    DEBUG ((DEBUG_ERROR, "Failed to relocate Td mailbox\n"));
+    return;
+  }
+
 
   do {
     Status = AcpiSdtProtocol->GetAcpiTable (Index, &Table, &Version, &OriginalTableKey);
@@ -89,7 +183,7 @@ AlterAcpiTable (
       MadtMpWk->Length          = sizeof (EFI_ACPI_6_4_MULTIPROCESSOR_WAKEUP_STRUCTURE);
       MadtMpWk->MailBoxVersion  = 1;
       MadtMpWk->Reserved        = 0;
-      MadtMpWk->MailBoxAddress  = PcdGet64 (PcdTdRelocatedMailboxBase);
+      MadtMpWk->MailBoxAddress  = RelocateMailboxAddress;
 
       Status = AcpiTableProtocol->InstallAcpiTable (AcpiTableProtocol, NewMadtTable, NewMadtTableLength, &NewTableKey);
       if (EFI_ERROR (Status)) {
