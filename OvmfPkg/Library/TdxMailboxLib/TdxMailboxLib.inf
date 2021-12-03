@@ -27,6 +27,9 @@
 
 [Sources.X64]
   TdxMailbox.c
+  SynchronizationMsc.c | MSFT
+  SynchronizationGcc.c | GCC
+  X64/GccInline.c | GCC
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -39,10 +42,7 @@
   DebugLib
   BaseMemoryLib
   PcdLib
-  UefiCpuLib
-  DebugAgentLib
   IoLib
-  SynchronizationLib
   MemoryAllocationLib
 
 [Guids]

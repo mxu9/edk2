@@ -11,14 +11,41 @@
 #include <Library/BaseMemoryLib.h>
 #include <Library/PcdLib.h>
 #include <Library/UefiCpuLib.h>
-#include <Library/SynchronizationLib.h>
 #include <Library/TdxLib.h>
 #include <IndustryStandard/IntelTdx.h>
 #include <IndustryStandard/Tdx.h>
 #include <Library/TdxMailboxLib.h>
+#include "TdxMailboxInternal.h"
 
 volatile VOID *mMailBox = NULL;
 UINT32  mNumOfCpus = 0;
+
+/**
+  Performs an atomic increment of a 32-bit unsigned integer.
+
+  Performs an atomic increment of the 32-bit unsigned integer specified by
+  Value and returns the incremented value. The increment operation must be
+  performed using MP safe mechanisms.
+
+  If Value is NULL, then ASSERT().
+
+  @param  Value A pointer to the 32-bit value to increment.
+
+  @return The incremented value.
+
+**/
+UINT32
+EFIAPI
+TdInterlockedIncrement (
+  IN      volatile UINT32           *Value
+  );
+
+UINT32
+EFIAPI
+TdInterlockedDecrement (
+  IN      volatile UINT32           *Value
+  );
+
 
 /**
   This function will be called by BSP to get the CPU number.
@@ -112,7 +139,7 @@ MpSerializeStart (
   }
   DEBUG ((DEBUG_VERBOSE, "Releasing APs\n"));
   MailBox->NumCpusExiting = NumOfCpus;
-  InterlockedIncrement ((UINT32 *) &MailBox->NumCpusArriving);
+  TdInterlockedIncrement ((UINT32 *) &MailBox->NumCpusArriving);
 }
 
 /**
@@ -134,5 +161,5 @@ MpSerializeEnd (
   DEBUG ((DEBUG_VERBOSE, "Restarting APs\n"));
   MailBox->Command = MpProtectedModeWakeupCommandNoop;
   MailBox->NumCpusArriving = 0;
-  InterlockedDecrement ((UINT32 *) &MailBox->NumCpusExiting);
+  TdInterlockedDecrement ((UINT32 *) &MailBox->NumCpusExiting);
 }
