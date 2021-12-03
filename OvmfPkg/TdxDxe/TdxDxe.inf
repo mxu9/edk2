@@ -19,6 +19,7 @@
 [Sources]
   TdxDxe.c
   TdxAcpiTable.c
+  X64/ApRunLoop.nasm
 
 [Packages]
   MdeModulePkg/MdeModulePkg.dec
@@ -36,6 +37,7 @@
   UefiDriverEntryPoint
   TdxLib
   HobLib
+  TdxMailboxLib
 
 [Depex]
   TRUE
