@@ -175,81 +175,6 @@ CheckSystemStatsForOverride (
 }
 
 /**
-  At the beginning of system boot, a 4K-aligned, 4K-size memory (Td mailbox) is
-  pre-allocated by host VMM. BSP & APs do the page accept together in that memory
-  region.
-
-  After that TDVF is designed to relocate the mailbox to a 4K-aligned, 4K-size
-  memory block which is allocated in the ACPI Nvs memory. APs are waken up and
-  spin around the relocated mailbox for further command.
-
-  @return   UINT64    Address of the relocated mailbox
-**/
-UINT64
-EFIAPI
-TdxRelocateMailbox (
-  VOID
-  )
-{
-  EFI_STATUS                  Status;
-  EFI_PHYSICAL_ADDRESS        Address;
-  VOID                        *ApLoopFunc = NULL;
-  UINT32                      RelocationPages;
-  MP_RELOCATION_MAP           RelocationMap;
-  MP_WAKEUP_MAILBOX           *RelocatedMailBox;
-
-  //
-  // Get information needed to setup aps running in their
-  // run loop in allocated acpi reserved memory
-  // Add another page for mailbox
-  //
-  AsmGetRelocationMap (&RelocationMap);
-  RelocationPages  = EFI_SIZE_TO_PAGES ((UINT32)RelocationMap.RelocateApLoopFuncSize) + 1;
-
-  Status = PeiServicesAllocatePages (EfiACPIMemoryNVS, RelocationPages, &Address);
-  if (EFI_ERROR (Status)) {
-    DEBUG ((DEBUG_ERROR, "Failed to allocate pages to relocate Td mailbox. %r\n", Status));
-    ASSERT (FALSE);
-    return 0;
-  }
-
-  ApLoopFunc = (VOID *) ((UINTN) Address + EFI_PAGE_SIZE);
-
-  CopyMem (
-    ApLoopFunc,
-    RelocationMap.RelocateApLoopFuncAddress,
-    RelocationMap.RelocateApLoopFuncSize
-    );
-
-  DEBUG ((DEBUG_INFO, "Ap Relocation: mailbox %llx, loop %p\n",
-    Address, ApLoopFunc));
-
-  //
-  // Initialize mailbox
-  //
-  RelocatedMailBox = (MP_WAKEUP_MAILBOX *)Address;
-  RelocatedMailBox->Command = MpProtectedModeWakeupCommandNoop;
-  RelocatedMailBox->ApicId = MP_CPU_PROTECTED_MODE_MAILBOX_APICID_INVALID;
-  RelocatedMailBox->WakeUpVector = 0;
-
-  //
-  // Wakup APs and have been move to the finalized run loop
-  // They will spin until guest OS wakes them
-  //
-  MpSerializeStart ();
-
-  MpSendWakeupCommand (
-    MpProtectedModeWakeupCommandWakeup,
-    (UINT64)ApLoopFunc,
-    (UINT64)RelocatedMailBox,
-    0,
-    0,
-    0);
-
-  return (UINT64)RelocatedMailBox;
-}
-
-/**
 
   This Function checks if TDX is available, if present then it sets
   the dynamic PcdTdxIsEnabled and PcdIa32EferChangeAllowed.
@@ -281,8 +206,6 @@ IntelTdxInitialize (
 
   ZeroMem (&PlatformInfoHob, sizeof (PlatformInfoHob));
   PlatformInfoHob.HostBridgePciDevId = mHostBridgeDevId;
-
-  PlatformInfoHob.RelocatedMailBox = TdxRelocateMailbox ();
 
   CheckSystemStatsForOverride (&PlatformInfoHob);
 

@@ -39,7 +39,6 @@
 
 [Sources.X64]
   IntelTdx.c
-  X64/ApRunLoop.nasm
 
 [Packages]
   EmbeddedPkg/EmbeddedPkg.dec
