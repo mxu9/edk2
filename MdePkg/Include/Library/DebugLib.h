@@ -396,6 +396,11 @@ UnitTestDebugAssert (
   #define DEBUG(Expression)
 #endif
 
+#define RELEASE_DEBUG(Expression)        \
+    do {                           \
+        _DEBUG (Expression);       \
+    } while (FALSE)
+
 /**
   Macro that calls DebugAssert() if an EFI_STATUS evaluates to an error code.
 

@@ -154,7 +154,7 @@ applicationProcessorEntryPoint:
 ; location.  (0xffffffe0)  This allows the Local APIC Startup IPI to be
 ; used to wake up the application processors.
 ;
-    jmp     EarlyApInitReal16
+    DD      (4096 * 1024 - (fourGigabytes - TdxMetadataGuid - 16))
 
 ALIGN   8
 

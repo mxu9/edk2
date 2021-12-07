@@ -1155,6 +1155,10 @@ InitializeCpu (
 {
   EFI_STATUS  Status;
   EFI_EVENT   IdleLoopEvent;
+  UINT64 TimerValue;
+  UINT64 BeginValue;
+  UINT64 EndValue;
+  UINT64 TimerPeriod;
 
   InitializePageTableLib();
 
@@ -1210,6 +1214,29 @@ InitializeCpu (
 
   InitializeMpSupport ();
 
+  TimerValue = AsmReadTsc ();
+
+  //
+  // Read time stamp counter before and after delay of 100 microseconds
+  //
+  BeginValue = AsmReadTsc ();
+  MicroSecondDelay (100);
+  EndValue   = AsmReadTsc ();
+  //
+  // Calculate the actual frequency
+  //
+  TimerPeriod = DivU64x64Remainder (
+                    MultU64x32 (
+                      1000 * 1000 * 1000,
+                      100
+                      ),
+                    EndValue - BeginValue,
+                    NULL
+                    );
+  RELEASE_DEBUG ((DEBUG_INFO,
+      "TimerPeriod: %lu\n",
+      TimerPeriod
+    ));
   return Status;
 }
 

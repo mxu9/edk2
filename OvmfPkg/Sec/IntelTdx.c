@@ -26,56 +26,7 @@
 #define ALIGNED_2MB_MASK 0x1fffff
 
 /**
-  BSP call this function to accept memory in a range.
-
-  @param[in]  StartAddress      Start address of the memory region
-  @param[in]  Length            Length of the memory region
-  @param[in]  AcceptChunkSize   Accept chunk size
-  @param[in]  AcceptPageSize    Accept page size
-  @retval     EFI_SUCCESS       Successfully accept the memory region
-  @retval     Others            Indicate the other errors
-**/
-EFI_STATUS
-EFIAPI
-BspAcceptMemoryResourceRange (
-  IN EFI_PHYSICAL_ADDRESS   StartAddress,
-  IN UINT64                 Length,
-  IN UINT64                 AcceptChunkSize,
-  IN UINT32                 AcceptPageSize
-  )
-{
-  EFI_STATUS                  Status;
-  UINT64                      Pages;
-  UINT64                      Stride;
-  EFI_PHYSICAL_ADDRESS        PhysicalAddress;
-  volatile MP_WAKEUP_MAILBOX  *MailBox;
-
-  Status = EFI_SUCCESS;
-  PhysicalAddress = StartAddress;
-  Stride = GetCpusNum () * AcceptChunkSize;
-  MailBox = (volatile MP_WAKEUP_MAILBOX *) GetTdxMailBox ();
-
-  while (!EFI_ERROR(Status) && PhysicalAddress < StartAddress + Length) {
-    //
-    // Decrease size of near end of resource if needed.
-    //
-    Pages = MIN (AcceptChunkSize, StartAddress + Length - PhysicalAddress) / AcceptPageSize;
-
-    MailBox->Tallies[0] += (UINT32)Pages;
-
-    Status = TdAcceptPages (PhysicalAddress, Pages, AcceptPageSize);
-    //
-    // Bump address to next chunk this cpu is responisble for
-    //
-    PhysicalAddress += Stride;
-  }
-
-  return Status;
-}
-
-/**
-  This function will be called to accept pages. BSP and APs are invokded
-  to do the task together.
+  This function will be called to accept pages. Only BSP accepts pages.
 
   TDCALL(ACCEPT_PAGE) supports the accept page size of 4k and 2M. To
   simplify the implementation, the Memory to be accpeted is splitted
@@ -90,10 +41,6 @@ BspAcceptMemoryResourceRange (
   |  part 3       |      Length3 < 2M
   |---------------|
 
-  part 1) will be accepted in 4k and by BSP.
-  Part 2) will be accepted in 2M and by BSP/AP.
-  Part 3) will be accepted in 4k and by BSP.
-
   @param[in] PhysicalAddress   Start physical adress
   @param[in] PhysicalEnd       End physical address
 
@@ -102,13 +49,12 @@ BspAcceptMemoryResourceRange (
 **/
 EFI_STATUS
 EFIAPI
-MpAcceptMemoryResourceRange (
+BspAcceptMemoryResourceRange (
   IN EFI_PHYSICAL_ADDRESS        PhysicalAddress,
   IN EFI_PHYSICAL_ADDRESS        PhysicalEnd
   )
 {
   EFI_STATUS                  Status;
-  UINT64                      AcceptChunkSize;
   UINT32                      AcceptPageSize;
   UINT64                      StartAddress1;
   UINT64                      StartAddress2;
@@ -117,11 +63,8 @@ MpAcceptMemoryResourceRange (
   UINT64                      Length1;
   UINT64                      Length2;
   UINT64                      Length3;
-  UINT32                      Index;
-  UINT32                      CpusNum;
-  volatile MP_WAKEUP_MAILBOX  *MailBox;
+  UINT64                      Pages;
 
-  AcceptChunkSize = FixedPcdGet64 (PcdTdxAcceptChunkSize);
   AcceptPageSize = FixedPcdGet32 (PcdTdxAcceptPageSize);
   TotalLength = PhysicalEnd - PhysicalAddress;
   StartAddress1 = 0;
@@ -130,6 +73,10 @@ MpAcceptMemoryResourceRange (
   Length1 = 0;
   Length2 = 0;
   Length3 = 0;
+
+  if (TotalLength == 0) {
+    return EFI_SUCCESS;
+  }
 
   if (AcceptPageSize == SIZE_4KB || TotalLength <= SIZE_2MB) {
     //
@@ -191,55 +138,31 @@ MpAcceptMemoryResourceRange (
   DEBUG ((DEBUG_INFO, "   Part1: 0x%llx - 0x%llx\n", StartAddress1, Length1));
   DEBUG ((DEBUG_INFO, "   Part2: 0x%llx - 0x%llx\n", StartAddress2, Length2));
   DEBUG ((DEBUG_INFO, "   Part3: 0x%llx - 0x%llx\n", StartAddress3, Length3));
-  DEBUG ((DEBUG_INFO, "   Chunk: 0x%llx, Page : 0x%llx\n", AcceptChunkSize, AcceptPageSize));
+  DEBUG ((DEBUG_INFO, "   Page : 0x%x\n", AcceptPageSize));
 
-  MpSerializeStart ();
-
-  if (Length2 > 0) {
-    MpSendWakeupCommand (
-      MpProtectedModeWakeupCommandAcceptPages,
-      0,
-      StartAddress2,
-      StartAddress2 + Length2,
-      AcceptChunkSize,
-      AcceptPageSize);
-
-    Status = BspAcceptMemoryResourceRange (
-                StartAddress2,
-                Length2,
-                AcceptChunkSize,
-                AcceptPageSize);
-    ASSERT (!EFI_ERROR (Status));
+  Status = EFI_SUCCESS;
+  if (Length1 > 0) {
+    Pages = Length1 / SIZE_4KB;
+    Status = TdAcceptPages (StartAddress1, Pages, SIZE_4KB);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
   }
 
-  if (Length1 > 0) {
-    Status = BspAcceptMemoryResourceRange (
-                StartAddress1,
-                Length1,
-                AcceptChunkSize,
-                SIZE_4KB);
-    ASSERT (!EFI_ERROR (Status));
+  if (Length2 > 0) {
+    Pages = Length2 / AcceptPageSize;
+    Status = TdAcceptPages (StartAddress2, Pages, AcceptPageSize);
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
   }
 
   if (Length3 > 0) {
-    Status = BspAcceptMemoryResourceRange (
-                StartAddress3,
-                Length3,
-                AcceptChunkSize,
-                SIZE_4KB);
+    Pages = Length3 / SIZE_4KB;
+    Status = TdAcceptPages (StartAddress3, Pages, SIZE_4KB);
     ASSERT (!EFI_ERROR (Status));
-  }
-
-  MpSerializeEnd ();
-
-  CpusNum = GetCpusNum ();
-  MailBox = (volatile MP_WAKEUP_MAILBOX *) GetTdxMailBox ();
-
-  for (Index = 0; Index < CpusNum; Index++) {
-    if (MailBox->Errors[Index] > 0) {
-      Status = EFI_DEVICE_ERROR;
-      DEBUG ((DEBUG_ERROR, "Error(%d) of CPU-%d when accepting memory\n",
-        MailBox->Errors[Index], Index));
+    if (EFI_ERROR (Status)) {
+      return Status;
     }
   }
 
@@ -514,6 +437,11 @@ ProcessHobList (
   EFI_PEI_HOB_POINTERS        Hob;
   EFI_PHYSICAL_ADDRESS        PhysicalEnd;
 
+  RELEASE_DEBUG ((DEBUG_INFO,
+    "TSC before accept memory: %lu\n",
+    AsmReadTsc()
+  ));
+
   Status = EFI_SUCCESS;
   ASSERT (VmmHobList != NULL);
   Hob.Raw = (UINT8 *) VmmHobList;
@@ -534,7 +462,7 @@ ProcessHobList (
 
         PhysicalEnd = Hob.ResourceDescriptor->PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
 
-        Status = MpAcceptMemoryResourceRange (
+        Status = BspAcceptMemoryResourceRange (
             Hob.ResourceDescriptor->PhysicalStart,
             PhysicalEnd);
         if (EFI_ERROR (Status)) {
@@ -544,6 +472,11 @@ ProcessHobList (
     }
     Hob.Raw = GET_NEXT_HOB (Hob);
   }
+
+  RELEASE_DEBUG ((DEBUG_INFO,
+    "TSC after accept memory: %lu\n",
+    AsmReadTsc()
+  ));
 
   return Status;
 }

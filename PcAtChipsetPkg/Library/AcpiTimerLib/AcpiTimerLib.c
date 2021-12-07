@@ -386,6 +386,10 @@ InternalCalculateTscFrequency (
                    9861                                             // Number of 101.4 us in a second
                    );
 
+  RELEASE_DEBUG ((DEBUG_INFO,
+        "TscFrequency : %lu\n",
+        TscFrequency
+      ));
   SetInterruptState (InterruptState);
 
   return TscFrequency;
