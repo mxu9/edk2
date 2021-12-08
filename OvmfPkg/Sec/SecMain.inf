@@ -55,7 +55,6 @@
 
 [LibraryClasses.X64]
   TdxLib
-  TdxMailboxLib
 
 [Ppis]
   gEfiTemporaryRamSupportPpiGuid                # PPI ALWAYS_PRODUCED
