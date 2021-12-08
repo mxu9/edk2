@@ -80,6 +80,7 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptChunkSize
   gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptPageSize
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfWorkAreaBase
+  gUefiOvmfPkgTokenSpaceGuid.PcdLazyAcceptPartialMemorySize
 
 [FeaturePcd]
   gUefiOvmfPkgTokenSpaceGuid.PcdSmmSmramRequire

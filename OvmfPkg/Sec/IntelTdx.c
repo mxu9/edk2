@@ -22,7 +22,10 @@
 #include <IndustryStandard/IntelTdx.h>
 #include "IntelTdx.h"
 
-#define ALIGNED_2MB_MASK 0x1fffff
+#define ALIGNED_2MB_MASK    0x1fffff
+#define MEGABYTE_SHIFT      20
+
+UINT64 mLazyAcceptMemSize = 0;
 
 /**
   This function will be called to accept pages. Only BSP accepts pages.
@@ -435,15 +438,33 @@ ProcessHobList (
   EFI_STATUS                  Status;
   EFI_PEI_HOB_POINTERS        Hob;
   EFI_PHYSICAL_ADDRESS        PhysicalEnd;
+  UINT64                      ResourceLength;
+  UINT64                      AccumulateAccepted;
 
-  Status = EFI_SUCCESS;
-  ASSERT (VmmHobList != NULL);
-  Hob.Raw = (UINT8 *) VmmHobList;
+  if (VmmHobList == NULL) {
+    return EFI_INVALID_PARAMETER;
+  }
 
+  Status              = EFI_SUCCESS;
+  AccumulateAccepted  = 0;
+  Hob.Raw             = (UINT8 *) VmmHobList;
+  mLazyAcceptMemSize  = FixedPcdGet64 (PcdLazyAcceptPartialMemorySize);
+
+  //
+  // If specified accept size is equal to or less than zero, accept all of the memory.
+  // Else transfer the size in megabyte to the number in byte.
+  //
+  if (mLazyAcceptMemSize == 0) {
+    mLazyAcceptMemSize = MAX_UINT64;
+  } else {
+    mLazyAcceptMemSize <<= MEGABYTE_SHIFT;
+  }
+
+  DEBUG ((DEBUG_INFO, "mLazyAcceptMemSize: 0x%llx\n", mLazyAcceptMemSize));
   //
   // Parse the HOB list until end of list or matching type is found.
   //
-  while (!END_OF_HOB_LIST (Hob)) {
+  while (!END_OF_HOB_LIST (Hob) && AccumulateAccepted < mLazyAcceptMemSize) {
 
     if (Hob.Header->HobType == EFI_HOB_TYPE_RESOURCE_DESCRIPTOR) {
       DEBUG ((DEBUG_INFO, "\nResourceType: 0x%x\n", Hob.ResourceDescriptor->ResourceType));
@@ -456,12 +477,25 @@ ProcessHobList (
 
         PhysicalEnd = Hob.ResourceDescriptor->PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
 
+        ResourceLength = Hob.ResourceDescriptor->ResourceLength;
+        if (AccumulateAccepted + ResourceLength > mLazyAcceptMemSize) {
+          //
+          // If the memory can't be accepted completely, accept the part of it to meet the
+          // TDX_PARTIAL_ACCEPTED_MEM_SIZE.
+          //
+          ResourceLength = mLazyAcceptMemSize - AccumulateAccepted;
+          PhysicalEnd = Hob.ResourceDescriptor->PhysicalStart + ResourceLength;
+        }
+
+        DEBUG ((DEBUG_INFO, "Accept Memory: %x - %x\n", Hob.ResourceDescriptor->PhysicalStart, PhysicalEnd));
+
         Status = BspAcceptMemoryResourceRange (
             Hob.ResourceDescriptor->PhysicalStart,
             PhysicalEnd);
         if (EFI_ERROR (Status)) {
           break;
         }
+        AccumulateAccepted += PhysicalEnd - Hob.ResourceDescriptor->PhysicalStart;
       }
     }
     Hob.Raw = GET_NEXT_HOB (Hob);

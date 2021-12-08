@@ -34,7 +34,7 @@
   DEFINE SOURCE_DEBUG_ENABLE     = FALSE
   DEFINE TPM_ENABLE              = FALSE
   DEFINE TPM_CONFIG_ENABLE       = FALSE
-
+  DEFINE LAZY_ACCEPT_PARTIAL_MEM = 512
   #
   # Network definition
   #
@@ -596,6 +596,8 @@
 
   # Point to the MdeModulePkg/Application/UiApp/UiApp.inf
   gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{ 0x21, 0xaa, 0x2c, 0x46, 0x14, 0x76, 0x03, 0x45, 0x83, 0x6e, 0x8a, 0xb6, 0xf4, 0x66, 0x23, 0x31 }
+
+  gUefiOvmfPkgTokenSpaceGuid.PcdLazyAcceptPartialMemorySize|$(LAZY_ACCEPT_PARTIAL_MEM)
 
 ################################################################################
 #
