@@ -92,23 +92,95 @@ TransferTdxHobList (
   )
 {
   EFI_PEI_HOB_POINTERS        Hob;
+  EFI_RESOURCE_TYPE           ResourceType;
   EFI_RESOURCE_ATTRIBUTE_TYPE ResourceAttribute;
+  EFI_PHYSICAL_ADDRESS        PhysicalStart;
+  UINT64                      ResourceLength;
+  UINT64                      LazyAcceptMemSize;
+  UINT64                      AccumulateAccepted;
 
+  AccumulateAccepted = 0;
+
+  LazyAcceptMemSize = FixedPcdGet64 (PcdLazyAcceptPartialMemorySize);
+
+  //
+  // If specified accept size is equal to or less than zero, accept all of the memory.
+  // Else transfer the size in megabyte to the number in byte.
+  //
+  if (LazyAcceptMemSize == 0) {
+    LazyAcceptMemSize = MAX_UINT64;
+  } else {
+    LazyAcceptMemSize <<= 20;
+  }
   //
   // PcdOvmfSecGhcbBase is used as the TD_HOB in Tdx guest.
   //
-  Hob.Raw = (UINT8 *) (UINTN) PcdGet32 (PcdOvmfSecGhcbBase);
+  Hob.Raw = (UINT8 *)(UINTN)PcdGet32 (PcdOvmfSecGhcbBase);
+
   while (!END_OF_HOB_LIST (Hob)) {
     switch (Hob.Header->HobType) {
     case EFI_HOB_TYPE_RESOURCE_DESCRIPTOR:
       ResourceAttribute = Hob.ResourceDescriptor->ResourceAttribute;
+      ResourceLength    = Hob.ResourceDescriptor->ResourceLength;
+      ResourceType      = Hob.ResourceDescriptor->ResourceType;
+      PhysicalStart     = Hob.ResourceDescriptor->PhysicalStart;
 
+      if (ResourceType == EFI_RESOURCE_SYSTEM_MEMORY) {
+        ResourceAttribute |= EFI_RESOURCE_ATTRIBUTE_PRESENT | EFI_RESOURCE_ATTRIBUTE_INITIALIZED;
+
+        //
+        // Set type of systme memory less than TDX_PARTIAL_ACCEPTED_MEM_SIZE to
+        // EFI_RESOURCE_SYSTEM_MEMORY and set other to EFI_RESOURCE_MEMORY_UNACCEPTED.
+        //
+        if (AccumulateAccepted >= LazyAcceptMemSize) {
+          ResourceType = EFI_RESOURCE_MEMORY_UNACCEPTED;
+          ResourceAttribute &= ~(EFI_RESOURCE_ATTRIBUTE_TESTED | EFI_RESOURCE_ATTRIBUTE_ENCRYPTED);
+        } else {
+          //
+          // Judge if the whole memory is accepted.
+          //
+          if (AccumulateAccepted + ResourceLength <= LazyAcceptMemSize) {
+            AccumulateAccepted += ResourceLength;
+            ResourceAttribute  |= EFI_RESOURCE_ATTRIBUTE_TESTED;
+            if (PhysicalStart + ResourceLength <= BASE_4GB) {
+              ResourceAttribute |= EFI_RESOURCE_ATTRIBUTE_ENCRYPTED;
+            }
+          } else {
+            //
+            // Set the resouce type, attribute and memory range of the the accepted part
+            // of the memory.
+            //
+            ResourceType = EFI_RESOURCE_SYSTEM_MEMORY;
+            ResourceLength = LazyAcceptMemSize - AccumulateAccepted;
+
+            ResourceAttribute |= EFI_RESOURCE_ATTRIBUTE_TESTED;
+            if (PhysicalStart + ResourceLength <= BASE_4GB) {
+              ResourceAttribute |= EFI_RESOURCE_ATTRIBUTE_ENCRYPTED;
+            }
+            BuildResourceDescriptorHob (
+              ResourceType,
+              ResourceAttribute,
+              PhysicalStart,
+              ResourceLength);
+            AccumulateAccepted += ResourceLength;
+
+            //
+            // Transfer the other part to the unaccepted memory.
+            //
+            PhysicalStart = PhysicalStart + ResourceLength;
+            ResourceLength = Hob.ResourceDescriptor->ResourceLength - ResourceLength;
+            ResourceType = EFI_RESOURCE_MEMORY_UNACCEPTED;
+            ResourceAttribute &= ~(EFI_RESOURCE_ATTRIBUTE_TESTED | EFI_RESOURCE_ATTRIBUTE_ENCRYPTED);
+          }
+        }
+      }
       BuildResourceDescriptorHob (
-        Hob.ResourceDescriptor->ResourceType,
+        ResourceType,
         ResourceAttribute,
-        Hob.ResourceDescriptor->PhysicalStart,
-        Hob.ResourceDescriptor->ResourceLength);
+        PhysicalStart,
+        ResourceLength);
       break;
+
     case EFI_HOB_TYPE_MEMORY_ALLOCATION:
       BuildMemoryAllocationHob (
         Hob.MemoryAllocation->AllocDescriptor.MemoryBaseAddress,

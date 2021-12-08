@@ -629,6 +629,7 @@ PublishPeiMemory (
   UINT64                      MemorySize;
   UINT32                      LowerMemorySize;
   UINT32                      PeiMemoryCap;
+  UINT64                      LazyAcceptMemSize;
 
   LowerMemorySize = GetSystemMemorySizeBelow4gb ();
   if (FeaturePcdGet (PcdSmmSmramRequire)) {
@@ -636,6 +637,14 @@ PublishPeiMemory (
     // TSEG is chipped from the end of low RAM
     //
     LowerMemorySize -= mQ35TsegMbytes * SIZE_1MB;
+  }
+
+  LazyAcceptMemSize = PcdGet64 (PcdLazyAcceptPartialMemorySize);
+  if (LazyAcceptMemSize != 0) {
+    LazyAcceptMemSize <<= 20;
+    if (LazyAcceptMemSize < LowerMemorySize) {
+      LowerMemorySize = (UINT32)(UINTN)LazyAcceptMemSize;
+    }
   }
 
   //

@@ -121,6 +121,7 @@
   gEfiMdeModulePkgTokenSpaceGuid.PcdIa32EferChangeAllowed
   gEfiMdePkgTokenSpaceGuid.PcdConfidentialComputingGuestAttr
   gEfiMdeModulePkgTokenSpaceGuid.PcdTdxSharedBitMask
+  gUefiOvmfPkgTokenSpaceGuid.PcdLazyAcceptPartialMemorySize
 
 [FixedPcd]
   gEfiMdePkgTokenSpaceGuid.PcdPciExpressBaseAddress
