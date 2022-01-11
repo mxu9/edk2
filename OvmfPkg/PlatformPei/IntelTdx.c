@@ -99,6 +99,7 @@ TransferTdxHobList (
 {
   EFI_PEI_HOB_POINTERS         Hob;
   EFI_RESOURCE_ATTRIBUTE_TYPE  ResourceAttribute;
+  EFI_RESOURCE_TYPE            ResourceType;
 
   //
   // PcdOvmfSecGhcbBase is used as the TD_HOB in Tdx guest.
@@ -108,9 +109,14 @@ TransferTdxHobList (
     switch (Hob.Header->HobType) {
       case EFI_HOB_TYPE_RESOURCE_DESCRIPTOR:
         ResourceAttribute = Hob.ResourceDescriptor->ResourceAttribute;
+        ResourceType      = Hob.ResourceDescriptor->ResourceType;
+        if (ResourceType == EFI_RESOURCE_MEMORY_UNACCEPTED) {
+          ResourceType       = EFI_RESOURCE_SYSTEM_MEMORY;
+          ResourceAttribute |= (EFI_RESOURCE_ATTRIBUTE_PRESENT | EFI_RESOURCE_ATTRIBUTE_INITIALIZED | EFI_RESOURCE_ATTRIBUTE_TESTED);
+        }
 
         BuildResourceDescriptorHob (
-          Hob.ResourceDescriptor->ResourceType,
+          ResourceType,
           ResourceAttribute,
           Hob.ResourceDescriptor->PhysicalStart,
           Hob.ResourceDescriptor->ResourceLength
