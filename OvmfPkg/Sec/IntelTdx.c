@@ -45,8 +45,11 @@ SecTdxIsEnabled (
 /**
   This function will be called to accept pages. Only BSP accepts pages.
 
-  TDCALL(ACCEPT_PAGE) supports the accept page size of 4k and 2M. To
-  simplify the implementation, the Memory to be accpeted is splitted
+  TDCALL(ACCEPT_PAGE) supports the accept page size of 4K and 2M (PcdTdxAcceptPageSize).
+
+  If the PcdTdxAcceptPageSize is set as 4K, then BSP accepts all the memory with 4KB.
+
+  If the PcdTdxAcceptPageSize is set as 2M, the Memory to be accpeted is splitted
   into 3 parts:
   -----------------  <-- StartAddress1 (not 2M aligned)
   |  part 1       |      Length1 < 2M
@@ -95,62 +98,33 @@ BspAcceptMemoryResourceRange (
     return EFI_SUCCESS;
   }
 
+  DEBUG ((DEBUG_INFO, "TdAccept: 0x%llx - 0x%llx\n", PhysicalAddress, TotalLength));
+
   if ((AcceptPageSize == SIZE_4KB) || (TotalLength <= SIZE_2MB)) {
-    //
-    // if total length is less than 2M, then we accept pages in 4k
-    //
-    StartAddress1  = 0;
-    Length1        = 0;
-    StartAddress2  = PhysicalAddress;
-    Length2        = PhysicalEnd - PhysicalAddress;
-    StartAddress3  = 0;
-    Length3        = 0;
+    StartAddress1  = PhysicalAddress;
+    Length1        = PhysicalEnd - PhysicalAddress;
     AcceptPageSize = SIZE_4KB;
   } else if (AcceptPageSize == SIZE_2MB) {
-    //
-    // Total length is bigger than 2M and Page Accept size 2M is supported.
-    //
-    if ((PhysicalAddress & ALIGNED_2MB_MASK) == 0) {
-      //
-      // Start address is 2M aligned
-      //
-      StartAddress1 = 0;
-      Length1       = 0;
-      StartAddress2 = PhysicalAddress;
-      Length2       = TotalLength & ~(UINT64)ALIGNED_2MB_MASK;
+    if (ALIGN_VALUE (PhysicalAddress, SIZE_2MB) != PhysicalAddress) {
+      StartAddress1    = PhysicalAddress;
+      Length1          = ALIGN_VALUE (PhysicalAddress, SIZE_2MB) - PhysicalAddress;
+      PhysicalAddress += Length1;
+      TotalLength     -= Length1;
+    }
 
-      if (TotalLength > Length2) {
-        //
-        // There is remaining part 3)
-        //
-        StartAddress3 = StartAddress2 + Length2;
-        Length3       = TotalLength - Length2;
-        ASSERT (Length3 < SIZE_2MB);
-      }
-    } else {
-      //
-      // Start address is not 2M aligned and total length is bigger than 2M.
-      //
-      StartAddress1 = PhysicalAddress;
-      ASSERT (TotalLength > SIZE_2MB);
-      Length1 = SIZE_2MB - (PhysicalAddress & ALIGNED_2MB_MASK);
-      if (TotalLength - Length1 < SIZE_2MB) {
-        //
-        // The Part 2) length is less than 2MB, so let's accept all the
-        // memory in 4K
-        //
-        Length1 = TotalLength;
-      } else {
-        StartAddress2 = PhysicalAddress + Length1;
-        Length2       = (TotalLength - Length1) & ~(UINT64)ALIGNED_2MB_MASK;
-        Length3       = TotalLength - Length1 - Length2;
-        StartAddress3 = Length3 > 0 ? StartAddress2 + Length2 : 0;
-        ASSERT (Length3 < SIZE_2MB);
-      }
+    if (TotalLength > SIZE_2MB) {
+      StartAddress2    = PhysicalAddress;
+      Length2          = TotalLength & ~(UINT64)ALIGNED_2MB_MASK;
+      PhysicalAddress += Length2;
+      TotalLength     -= Length2;
+    }
+
+    if (TotalLength) {
+      StartAddress3 = PhysicalAddress;
+      Length3       = TotalLength;
     }
   }
 
-  DEBUG ((DEBUG_INFO, "TdAccept: 0x%llx - 0x%llx\n", PhysicalAddress, TotalLength));
   DEBUG ((DEBUG_INFO, "   Part1: 0x%llx - 0x%llx\n", StartAddress1, Length1));
   DEBUG ((DEBUG_INFO, "   Part2: 0x%llx - 0x%llx\n", StartAddress2, Length2));
   DEBUG ((DEBUG_INFO, "   Part3: 0x%llx - 0x%llx\n", StartAddress3, Length3));
