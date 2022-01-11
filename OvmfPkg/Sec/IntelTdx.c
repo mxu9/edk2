@@ -257,7 +257,7 @@ ValidateHobList (
   )
 {
   EFI_PEI_HOB_POINTERS  Hob;
-  UINT32                EFI_BOOT_MODE_LIST[12] = {
+  UINT32                EFI_BOOT_MODE_LIST[] = {
     BOOT_WITH_FULL_CONFIGURATION,
     BOOT_WITH_MINIMAL_CONFIGURATION,
     BOOT_ASSUMING_NO_CONFIGURATION_CHANGES,
@@ -272,7 +272,7 @@ ValidateHobList (
     BOOT_IN_RECOVERY_MODE
   };
 
-  UINT32  EFI_RESOURCE_TYPE_LIST[8] = {
+  UINT32  EFI_RESOURCE_TYPE_LIST[] = {
     EFI_RESOURCE_SYSTEM_MEMORY,
     EFI_RESOURCE_MEMORY_MAPPED_IO,
     EFI_RESOURCE_IO,
@@ -280,6 +280,7 @@ ValidateHobList (
     EFI_RESOURCE_MEMORY_MAPPED_IO_PORT,
     EFI_RESOURCE_MEMORY_RESERVED,
     EFI_RESOURCE_IO_RESERVED,
+    EFI_RESOURCE_MEMORY_UNACCEPTED,
     EFI_RESOURCE_MAX_MEMORY_TYPE
   };
 
@@ -457,7 +458,7 @@ ProcessHobList (
     if (Hob.Header->HobType == EFI_HOB_TYPE_RESOURCE_DESCRIPTOR) {
       DEBUG ((DEBUG_INFO, "\nResourceType: 0x%x\n", Hob.ResourceDescriptor->ResourceType));
 
-      if (Hob.ResourceDescriptor->ResourceType == EFI_RESOURCE_SYSTEM_MEMORY) {
+      if (Hob.ResourceDescriptor->ResourceType == EFI_RESOURCE_MEMORY_UNACCEPTED) {
         DEBUG ((DEBUG_INFO, "ResourceAttribute: 0x%x\n", Hob.ResourceDescriptor->ResourceAttribute));
         DEBUG ((DEBUG_INFO, "PhysicalStart: 0x%llx\n", Hob.ResourceDescriptor->PhysicalStart));
         DEBUG ((DEBUG_INFO, "ResourceLength: 0x%llx\n", Hob.ResourceDescriptor->ResourceLength));
