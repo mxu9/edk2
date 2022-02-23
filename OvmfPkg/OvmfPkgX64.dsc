@@ -93,6 +93,13 @@
   INTEL:*_*_*_CC_FLAGS = /D DISABLE_NEW_DEPRECATED_INTERFACES
   GCC:*_*_*_CC_FLAGS = -D DISABLE_NEW_DEPRECATED_INTERFACES
 
+  #
+  # Add TDX_GUEST_SUPPORTED
+  #
+  MSFT:*_*_*_CC_FLAGS = /D TDX_GUEST_SUPPORTED
+  INTEL:*_*_*_CC_FLAGS = /D TDX_GUEST_SUPPORTED
+  GCC:*_*_*_CC_FLAGS = -D TDX_GUEST_SUPPORTED
+
 !include NetworkPkg/NetworkBuildOptions.dsc.inc
 
 [BuildOptions.common.EDKII.DXE_RUNTIME_DRIVER]
@@ -267,7 +274,7 @@
 !endif
   VmgExitLib|OvmfPkg/Library/VmgExitLib/SecVmgExitLib.inf
   MemEncryptSevLib|OvmfPkg/Library/BaseMemEncryptSevLib/SecMemEncryptSevLib.inf
-  PlatformInitLib|OvmfPkg/Library/PlatformInitLib/PlatformInitLib.inf
+  # PlatformInitLib|OvmfPkg/Library/PlatformInitLib/PlatformInitLib.inf
 
 [LibraryClasses.common.PEI_CORE]
   HobLib|MdePkg/Library/PeiHobLib/PeiHobLib.inf
@@ -682,6 +689,7 @@
   OvmfPkg/Sec/SecMain.inf {
     <LibraryClasses>
       NULL|MdeModulePkg/Library/LzmaCustomDecompressLib/LzmaCustomDecompressLib.inf
+      NULL|OvmfPkg/Library/PlatformInitLib/PlatformInitLib.inf
   }
 
   #

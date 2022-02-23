@@ -737,7 +737,7 @@ SecCoreStartupWithStack (
   UINT32                Index;
   volatile UINT8        *Table;
 
- #if defined (MDE_CPU_X64)
+ #if defined (TDX_GUEST_SUPPORTED)
   if (TdIsEnabled ()) {
     //
     // For Td guests, the memory map info is in TdHobLib. It should be processed
@@ -827,7 +827,7 @@ SecCoreStartupWithStack (
     AsmEnableCache ();
   }
 
- #if defined (MDE_CPU_X64)
+ #if defined (TDX_GUEST_SUPPORTED)
   if (TdIsEnabled ()) {
     //
     // InitializeCpuExceptionHandlers () should be called in Td guests so that

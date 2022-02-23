@@ -55,9 +55,6 @@
   MemEncryptSevLib
   CpuExceptionHandlerLib
 
-[LibraryClasses.X64]
-  PlatformInitLib
-
 [Ppis]
   gEfiTemporaryRamSupportPpiGuid                # PPI ALWAYS_PRODUCED
 
