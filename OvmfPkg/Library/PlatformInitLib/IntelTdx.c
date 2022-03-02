@@ -187,7 +187,7 @@ ValidateHobList (
   )
 {
   EFI_PEI_HOB_POINTERS  Hob;
-  UINT32                EFI_BOOT_MODE_LIST[12] = {
+  UINT32                EFI_BOOT_MODE_LIST[] = {
     BOOT_WITH_FULL_CONFIGURATION,
     BOOT_WITH_MINIMAL_CONFIGURATION,
     BOOT_ASSUMING_NO_CONFIGURATION_CHANGES,
@@ -202,7 +202,7 @@ ValidateHobList (
     BOOT_IN_RECOVERY_MODE
   };
 
-  UINT32  EFI_RESOURCE_TYPE_LIST[8] = {
+  UINT32  EFI_RESOURCE_TYPE_LIST[] = {
     EFI_RESOURCE_SYSTEM_MEMORY,
     EFI_RESOURCE_MEMORY_MAPPED_IO,
     EFI_RESOURCE_IO,
@@ -210,6 +210,7 @@ ValidateHobList (
     EFI_RESOURCE_MEMORY_MAPPED_IO_PORT,
     EFI_RESOURCE_MEMORY_RESERVED,
     EFI_RESOURCE_IO_RESERVED,
+    EFI_RESOURCE_MEMORY_UNACCEPTED,
     EFI_RESOURCE_MAX_MEMORY_TYPE
   };
 
@@ -241,7 +242,7 @@ ValidateHobList (
           return FALSE;
         }
 
-        if (IsInValidList (Hob.HandoffInformationTable->BootMode, EFI_BOOT_MODE_LIST, 12) == FALSE) {
+        if (IsInValidList (Hob.HandoffInformationTable->BootMode, EFI_BOOT_MODE_LIST, ARRAY_SIZE (EFI_BOOT_MODE_LIST)) == FALSE) {
           DEBUG ((DEBUG_ERROR, "HOB: Unknow HandoffInformationTable BootMode type. Type: 0x%08x\n", Hob.HandoffInformationTable->BootMode));
           return FALSE;
         }
@@ -260,7 +261,7 @@ ValidateHobList (
           return FALSE;
         }
 
-        if (IsInValidList (Hob.ResourceDescriptor->ResourceType, EFI_RESOURCE_TYPE_LIST, 8) == FALSE) {
+        if (IsInValidList (Hob.ResourceDescriptor->ResourceType, EFI_RESOURCE_TYPE_LIST, ARRAY_SIZE (EFI_RESOURCE_TYPE_LIST)) == FALSE) {
           DEBUG ((DEBUG_ERROR, "HOB: Unknow ResourceDescriptor ResourceType type. Type: 0x%08x\n", Hob.ResourceDescriptor->ResourceType));
           return FALSE;
         }
@@ -290,8 +291,7 @@ ValidateHobList (
                                                             EFI_RESOURCE_ATTRIBUTE_PERSISTABLE |
                                                             EFI_RESOURCE_ATTRIBUTE_READ_ONLY_PROTECTED |
                                                             EFI_RESOURCE_ATTRIBUTE_READ_ONLY_PROTECTABLE |
-                                                            EFI_RESOURCE_ATTRIBUTE_MORE_RELIABLE |
-                                                            EFI_RESOURCE_ATTRIBUTE_ENCRYPTED))) != 0)
+                                                            EFI_RESOURCE_ATTRIBUTE_MORE_RELIABLE))) != 0)
         {
           DEBUG ((DEBUG_ERROR, "HOB: Unknow ResourceDescriptor ResourceAttribute type. Type: 0x%08x\n", Hob.ResourceDescriptor->ResourceAttribute));
           return FALSE;
@@ -387,7 +387,7 @@ ProcessHobList (
     if (Hob.Header->HobType == EFI_HOB_TYPE_RESOURCE_DESCRIPTOR) {
       DEBUG ((DEBUG_INFO, "\nResourceType: 0x%x\n", Hob.ResourceDescriptor->ResourceType));
 
-      if (Hob.ResourceDescriptor->ResourceType == EFI_RESOURCE_SYSTEM_MEMORY) {
+      if (Hob.ResourceDescriptor->ResourceType == EFI_RESOURCE_MEMORY_UNACCEPTED) {
         DEBUG ((DEBUG_INFO, "ResourceAttribute: 0x%x\n", Hob.ResourceDescriptor->ResourceAttribute));
         DEBUG ((DEBUG_INFO, "PhysicalStart: 0x%llx\n", Hob.ResourceDescriptor->PhysicalStart));
         DEBUG ((DEBUG_INFO, "ResourceLength: 0x%llx\n", Hob.ResourceDescriptor->ResourceLength));
@@ -474,7 +474,9 @@ TransferTdxHobList (
   VOID
   )
 {
-  EFI_PEI_HOB_POINTERS  Hob;
+  EFI_PEI_HOB_POINTERS         Hob;
+  EFI_RESOURCE_TYPE            ResourceType;
+  EFI_RESOURCE_ATTRIBUTE_TYPE  ResourceAttribute;
 
   //
   // PcdOvmfSecGhcbBase is used as the TD_HOB in Tdx guest.
@@ -483,9 +485,17 @@ TransferTdxHobList (
   while (!END_OF_HOB_LIST (Hob)) {
     switch (Hob.Header->HobType) {
       case EFI_HOB_TYPE_RESOURCE_DESCRIPTOR:
+        ResourceType      = Hob.ResourceDescriptor->ResourceType;
+        ResourceAttribute = Hob.ResourceDescriptor->ResourceAttribute;
+
+        if (ResourceType == EFI_RESOURCE_MEMORY_UNACCEPTED) {
+          ResourceType       = EFI_RESOURCE_SYSTEM_MEMORY;
+          ResourceAttribute |= (EFI_RESOURCE_ATTRIBUTE_PRESENT | EFI_RESOURCE_ATTRIBUTE_INITIALIZED | EFI_RESOURCE_ATTRIBUTE_TESTED);
+        }
+
         BuildResourceDescriptorHob (
-          Hob.ResourceDescriptor->ResourceType,
-          Hob.ResourceDescriptor->ResourceAttribute,
+          ResourceType,
+          ResourceAttribute,
           Hob.ResourceDescriptor->PhysicalStart,
           Hob.ResourceDescriptor->ResourceLength
           );
