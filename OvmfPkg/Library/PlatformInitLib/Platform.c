@@ -152,7 +152,9 @@ PlatformMemMapInitialization (
   //
   // Video memory + Legacy BIOS region
   //
-  PlatformAddIoMemoryRangeHob (0x0A0000, BASE_1MB);
+  if (!TdIsEnabled ()) {
+    PlatformAddIoMemoryRangeHob (0x0A0000, BASE_1MB);
+  }
 
   if (HostBridgeDevId == 0xffff /* microvm */) {
     PlatformAddIoMemoryBaseSizeHob (MICROVM_GED_MMIO_BASE, SIZE_4KB);
