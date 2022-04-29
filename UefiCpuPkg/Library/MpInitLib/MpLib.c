@@ -10,12 +10,15 @@
 
 #include "MpLib.h"
 #include "MpIntelTdx.h"
+#include <Library/CcProbeLib.h>
 #include <Library/VmgExitLib.h>
 #include <Register/Amd/Fam17Msr.h>
 #include <Register/Amd/Ghcb.h>
 #include <ConfidentialComputingGuestAttr.h>
 
 EFI_GUID  mCpuInitMpLibHobGuid = CPU_INIT_MP_LIB_HOB_GUID;
+
+#define IS_TDX_GUEST(x)  (x == CcGuestTypeIntelTdx)
 
 /**
   The function will check if BSP Execute Disable is enabled.
@@ -1805,7 +1808,7 @@ MpInitLibInitialize (
   UINTN                    BackupBufferAddr;
   UINTN                    ApIdtBase;
 
-  if (CC_GUEST_IS_TDX (PcdGet64 (PcdConfidentialComputingGuestAttr))) {
+  if (IS_TDX_GUEST (CcProbe ())) {
     return EFI_SUCCESS;
   }
 
@@ -2079,7 +2082,7 @@ MpInitLibGetProcessorInfo (
   CPU_INFO_IN_HOB  *CpuInfoInHob;
   UINTN            OriginalProcessorNumber;
 
-  if (CC_GUEST_IS_TDX (PcdGet64 (PcdConfidentialComputingGuestAttr))) {
+  if (IS_TDX_GUEST (CcProbe ())) {
     return TdxMpInitLibGetProcessorInfo (ProcessorNumber, ProcessorInfoBuffer, HealthData);
   }
 
@@ -2177,7 +2180,7 @@ SwitchBSPWorker (
   BOOLEAN                      OldInterruptState;
   BOOLEAN                      OldTimerInterruptState;
 
-  if (CC_GUEST_IS_TDX (PcdGet64 (PcdConfidentialComputingGuestAttr))) {
+  if (IS_TDX_GUEST (CcProbe ())) {
     return EFI_UNSUPPORTED;
   }
 
@@ -2321,7 +2324,7 @@ EnableDisableApWorker (
   CPU_MP_DATA  *CpuMpData;
   UINTN        CallerNumber;
 
-  if (CC_GUEST_IS_TDX (PcdGet64 (PcdConfidentialComputingGuestAttr))) {
+  if (IS_TDX_GUEST (CcProbe ())) {
     return EFI_UNSUPPORTED;
   }
 
@@ -2385,7 +2388,7 @@ MpInitLibWhoAmI (
     return EFI_INVALID_PARAMETER;
   }
 
-  if (CC_GUEST_IS_TDX (PcdGet64 (PcdConfidentialComputingGuestAttr))) {
+  if (IS_TDX_GUEST (CcProbe ())) {
     *ProcessorNumber = 0;
     return EFI_SUCCESS;
   }
@@ -2432,7 +2435,7 @@ MpInitLibGetNumberOfProcessors (
     return EFI_INVALID_PARAMETER;
   }
 
-  if (CC_GUEST_IS_TDX (PcdGet64 (PcdConfidentialComputingGuestAttr))) {
+  if (IS_TDX_GUEST (CcProbe ())) {
     return TdxMpInitLibGetNumberOfProcessors (NumberOfProcessors, NumberOfEnabledProcessors);
   }
 
@@ -2534,7 +2537,7 @@ StartupAllCPUsWorker (
     return EFI_INVALID_PARAMETER;
   }
 
-  if (CC_GUEST_IS_TDX (PcdGet64 (PcdConfidentialComputingGuestAttr))) {
+  if (IS_TDX_GUEST (CcProbe ())) {
     //
     // For Td guest ExcludeBsp must be FALSE. Otherwise it will return in above checks.
     //
@@ -2692,7 +2695,7 @@ StartupThisAPWorker (
   //
   // In Td guest, startup of AP is not supported in current stage.
   //
-  if (CC_GUEST_IS_TDX (PcdGet64 (PcdConfidentialComputingGuestAttr))) {
+  if (IS_TDX_GUEST (CcProbe ())) {
     return EFI_UNSUPPORTED;
   }
 

@@ -58,6 +58,7 @@
   PcdLib
   VmgExitLib
   MicrocodeLib
+  CcProbeLib
 
 [Pcd]
   gUefiCpuPkgTokenSpaceGuid.PcdCpuMaxLogicalProcessorNumber        ## CONSUMES

@@ -59,6 +59,7 @@
   PcdLib
   VmgExitLib
   MicrocodeLib
+  CcProbeLib
 
 [Protocols]
   gEfiTimerArchProtocolGuid                     ## SOMETIMES_CONSUMES
