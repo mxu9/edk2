@@ -351,6 +351,11 @@ InitializePlatform (
   // Query Host Bridge DID
   //
   mPlatformInfoHob.HostBridgeDevId = PciRead16 (OVMF_HOSTBRIDGE_DID);
+
+  if (TdIsEnabled ()) {
+    PlatformProcessTdxHobListPhase2 ();
+  }
+
   AddressWidthInitialization (&mPlatformInfoHob);
 
   MaxCpuCountInitialization (&mPlatformInfoHob);

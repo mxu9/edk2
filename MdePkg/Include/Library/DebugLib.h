@@ -401,6 +401,11 @@ UnitTestDebugAssert (
 #define ASSERT(Expression)
 #endif
 
+#define RELEASE_DEBUG(Expression)  \
+    do {                           \
+        _DEBUG (Expression);       \
+    } while (FALSE)
+
 /**
   Macro that calls DebugPrint().
 

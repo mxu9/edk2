@@ -71,6 +71,12 @@ typedef struct _SEC_TDX_WORK_AREA {
   UINT32    PageTableReady;
   UINT32    Gpaw;
   UINT64    HobList;
+  UINT64    AcceptMemoryPhase1EndAddress;
+  UINT64    AcceptMemoryPhase2EndAddress;
+  UINT32    APsStackAddress;
+  UINT32    APsStackSize;
+  UINT64    AcceptMemoryPhase1TscCnt;
+  UINT64    AcceptMemoryPhase2TscCnt;
 } SEC_TDX_WORK_AREA;
 
 typedef struct _TDX_WORK_AREA {

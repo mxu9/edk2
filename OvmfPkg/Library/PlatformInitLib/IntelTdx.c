@@ -20,6 +20,7 @@
 #include <Library/QemuFwCfgLib.h>
 #include <Library/PeiServicesLib.h>
 #include <Library/TdxLib.h>
+#include <Library/TdxMailboxLib.h>
 #include <Library/SynchronizationLib.h>
 #include <Pi/PrePiHob.h>
 #include <WorkArea.h>
@@ -27,6 +28,73 @@
 
 #define ALIGNED_2MB_MASK  0x1fffff
 #define MEGABYTE_SHIFT    20
+
+#define SET_ACCEPT_MEMORY_PHASE1_END_ADDRESS(addr) \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.AcceptMemoryPhase1EndAddress = addr)
+#define ACCEPT_MEMORY_PHASE1_END_ADDRESS \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.AcceptMemoryPhase1EndAddress)
+
+#define SET_ACCEPT_MEMORY_PHASE2_END_ADDRESS(addr) \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.AcceptMemoryPhase2EndAddress = addr)
+#define ACCEPT_MEMORY_PHASE2_END_ADDRESS \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.AcceptMemoryPhase2EndAddress)
+
+#define SET_ACCEPT_MEMORY_APS_STACK_ADDRESS(addr) \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.APsStackAddress = (UINT32)(UINTN)addr)
+#define ACCEPT_MEMORY_APS_STACK_ADDRESS \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.APsStackAddress)
+
+#define SET_ACCEPT_MEMORY_APS_STACK_SIZE(size) \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.APsStackSize = size)
+#define ACCEPT_MEMORY_APS_STACK_SIZE \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.APsStackSize)
+
+#define SET_ACCEPT_MEMORY_PHASE1_TSC_CNT(tsc) \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.AcceptMemoryPhase1TscCnt = tsc)
+#define ACCEPT_MEMORY_PHASE1_TSC_CNT \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.AcceptMemoryPhase1TscCnt)
+
+#define SET_ACCEPT_MEMORY_PHASE2_TSC_CNT(tsc) \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.AcceptMemoryPhase2TscCnt = tsc)
+#define ACCEPT_MEMORY_PHASE2_TSC_CNT \
+  (((TDX_WORK_AREA *)(UINTN)FixedPcdGet32 (PcdOvmfWorkAreaBase))->SecTdxWorkArea.AcceptMemoryPhase2TscCnt)
+
+#define TSC_CNT_TO_MS(cnt,freq) (UINT32)DivU64x64Remainder(cnt * 1000, freq, NULL)
+#define TSC_CNT_TO_US(cnt,freq) (UINT32)DivU64x64Remainder(cnt * 1000 * 1000, freq, NULL)
+
+UINT64 CalcTscFreq(
+  VOID
+  )
+{
+  UINT32   RegEax;
+  UINT32   RegEbx;
+  UINT32   RegEcx;
+  UINT64   TscFreq;
+
+  AsmCpuid(0x15, &RegEax, &RegEbx, &RegEcx, NULL);
+
+  if (RegEbx == 0 || RegEax == 0) {
+    TscFreq = 0;
+  } else {
+    TscFreq = (UINT64)(UINTN)RegEcx * (UINT64)(UINTN)RegEbx / (UINT64)(UINTN)RegEax;
+  }
+
+  return TscFreq;
+}
+
+STATIC
+UINT64
+CalculateChunkSize (
+  UINT64  MemoryRegionSize,
+  UINT32  CpusNum
+  )
+{
+  UINT64  ChunkSize;
+
+  ChunkSize = ALIGN_VALUE (MemoryRegionSize / CpusNum, SIZE_2MB);
+
+  return ChunkSize;
+}
 
 /**
   This function will be called to accept pages. Only BSP accepts pages.
@@ -57,16 +125,17 @@ BspAcceptMemoryResourceRange (
   IN EFI_PHYSICAL_ADDRESS  PhysicalEnd
   )
 {
-  EFI_STATUS  Status;
-  UINT32      AcceptPageSize;
-  UINT64      StartAddress1;
-  UINT64      StartAddress2;
-  UINT64      StartAddress3;
-  UINT64      TotalLength;
-  UINT64      Length1;
-  UINT64      Length2;
-  UINT64      Length3;
-  UINT64      Pages;
+  EFI_STATUS                  Status;
+  UINT32                      AcceptPageSize;
+  UINT64                      StartAddress1;
+  UINT64                      StartAddress2;
+  UINT64                      StartAddress3;
+  UINT64                      TotalLength;
+  UINT64                      Length1;
+  UINT64                      Length2;
+  UINT64                      Length3;
+  UINT64                      Pages;
+  volatile MP_WAKEUP_MAILBOX  *MailBox;
 
   AcceptPageSize = FixedPcdGet32 (PcdTdxAcceptPageSize);
   TotalLength    = PhysicalEnd - PhysicalAddress;
@@ -76,12 +145,13 @@ BspAcceptMemoryResourceRange (
   Length1        = 0;
   Length2        = 0;
   Length3        = 0;
+  MailBox        = (volatile MP_WAKEUP_MAILBOX *)GetTdxMailBox ();
 
   if (TotalLength == 0) {
     return EFI_SUCCESS;
   }
 
-  DEBUG ((DEBUG_INFO, "TdAccept: 0x%llx - 0x%llx\n", PhysicalAddress, TotalLength));
+  DEBUG ((DEBUG_INFO, "BspAccept: 0x%llx - 0x%llx\n", PhysicalAddress, TotalLength));
 
   if (ALIGN_VALUE (PhysicalAddress, SIZE_2MB) != PhysicalAddress) {
     StartAddress1 = PhysicalAddress;
@@ -137,7 +207,145 @@ BspAcceptMemoryResourceRange (
     }
   }
 
+  MailBox->Tallies[0] += (UINT32)(UINTN)EFI_SIZE_TO_PAGES (Length1 + Length2 + Length3);
+
   return Status;
+}
+
+STATIC
+EFI_STATUS
+EFIAPI
+BspApAcceptMemoryResourceRange (
+  UINT32                CpuIndex,
+  UINT32                CpusNum,
+  EFI_PHYSICAL_ADDRESS  PhysicalStart,
+  EFI_PHYSICAL_ADDRESS  PhysicalEnd
+  )
+{
+  UINT64                      Status;
+  UINT64                      Pages;
+  UINT64                      Stride;
+  UINT64                      AcceptPageSize;
+  UINT64                      AcceptChunkSize;
+  EFI_PHYSICAL_ADDRESS        PhysicalAddress;
+  volatile MP_WAKEUP_MAILBOX  *MailBox;
+
+  // AcceptChunkSize = (UINT64)(UINTN)FixedPcdGet32 (PcdTdxAcceptMemoryChunkSize);
+  AcceptChunkSize = CalculateChunkSize (PhysicalEnd - PhysicalStart, CpusNum);
+  AcceptPageSize  = (UINT64)(UINTN)FixedPcdGet32 (PcdTdxAcceptPageSize);
+  MailBox         = (volatile MP_WAKEUP_MAILBOX *)GetTdxMailBox ();
+
+  Stride          = CpusNum * AcceptChunkSize;
+  PhysicalAddress = PhysicalStart + AcceptChunkSize * CpuIndex;
+  Status          = EFI_SUCCESS;
+
+  while (!EFI_ERROR (Status) && PhysicalAddress < PhysicalEnd) {
+    Pages  = MIN (AcceptChunkSize, PhysicalEnd - PhysicalAddress) / AcceptPageSize;
+    Status = TdAcceptPages (PhysicalAddress, Pages, AcceptPageSize);
+    ASSERT (!EFI_ERROR (Status));
+    MailBox->Tallies[CpuIndex] += (UINT32)(UINTN)EFI_SIZE_TO_PAGES (Pages * AcceptPageSize);
+    PhysicalAddress            += Stride;
+  }
+
+  return EFI_SUCCESS;
+}
+
+STATIC
+EFI_STATUS
+EFIAPI
+ApAcceptMemoryResourceRange (
+  UINT32                CpuIndex,
+  EFI_PHYSICAL_ADDRESS  PhysicalStart,
+  EFI_PHYSICAL_ADDRESS  PhysicalEnd
+  )
+{
+  UINT64          Status;
+  TD_RETURN_DATA  TdReturnData;
+
+  Status = TdCall (TDCALL_TDINFO, 0, 0, 0, &TdReturnData);
+  if (Status != TDX_EXIT_REASON_SUCCESS) {
+    ASSERT (FALSE);
+    return EFI_ABORTED;
+  }
+
+  if ((CpuIndex == 0) || (CpuIndex > TdReturnData.TdInfo.NumVcpus)) {
+    ASSERT (FALSE);
+    return EFI_ABORTED;
+  }
+
+  return BspApAcceptMemoryResourceRange (CpuIndex, TdReturnData.TdInfo.NumVcpus, PhysicalStart, PhysicalEnd);
+}
+
+EFI_STATUS
+EFIAPI
+MpAcceptMemoryResourceRange (
+  IN EFI_PHYSICAL_ADDRESS  PhysicalStart,
+  IN EFI_PHYSICAL_ADDRESS  PhysicalEnd
+  )
+{
+  UINT64  AcceptPageSize;
+  UINT64  TotalLength;
+  UINT32  CpusNum;
+  UINT64  AcceptChunkSize;
+  UINT32  APsStackSize;
+  VOID    *APsStackAddress;
+
+  TotalLength = PhysicalEnd - PhysicalStart;
+
+  if (TotalLength == 0) {
+    return EFI_SUCCESS;
+  }
+
+  AcceptChunkSize = (UINT64)(UINTN)FixedPcdGet32 (PcdTdxAcceptMemoryChunkSize);
+  AcceptPageSize  = (UINT64)(UINTN)FixedPcdGet32 (PcdTdxAcceptPageSize);
+
+  DEBUG ((DEBUG_INFO, "MpAccept : 0x%llx - 0x%llx (0x%llx)\n", PhysicalStart, PhysicalEnd, TotalLength));
+  DEBUG ((DEBUG_INFO, "    Page : 0x%x\n", AcceptPageSize));
+
+  ASSERT (ALIGN_VALUE (PhysicalStart, SIZE_2MB) == PhysicalStart);
+
+  if (TotalLength <= AcceptChunkSize) {
+    return BspAcceptMemoryResourceRange (PhysicalStart, PhysicalEnd);
+  }
+
+  APsStackAddress = (VOID *)(UINTN)ACCEPT_MEMORY_APS_STACK_ADDRESS;
+  APsStackSize    = ACCEPT_MEMORY_APS_STACK_SIZE;
+  CpusNum         = GetCpusNum ();
+
+  if (APsStackAddress == 0) {
+    APsStackSize    = (CpusNum - 1) * SIZE_16KB;
+    APsStackAddress = AllocatePages (EFI_SIZE_TO_PAGES (APsStackSize));
+    ASSERT (APsStackAddress != NULL);
+    SET_ACCEPT_MEMORY_APS_STACK_ADDRESS (APsStackAddress);
+    SET_ACCEPT_MEMORY_APS_STACK_SIZE (APsStackSize);
+  } else {
+    ASSERT (APsStackSize != 0);
+  }
+
+  DEBUG ((DEBUG_INFO, "AP StackBaseAddress=%p, StackSize=%x\n", APsStackAddress, APsStackSize));
+
+  DEBUG ((DEBUG_INFO, "BSP/APs accept memories ...\n"));
+  RELEASE_DEBUG ((DEBUG_INFO, "  ChunkSize = %llx\n", CalculateChunkSize (PhysicalEnd - PhysicalStart, CpusNum)));
+
+  MpSerializeStart ();
+
+  MpSendWakeupCommand (
+    MpProtectedModeWakeupCommandAcceptPages,
+    (UINT64)(UINTN)ApAcceptMemoryResourceRange,
+    PhysicalStart,
+    PhysicalEnd,
+    (UINT64)(UINTN)APsStackAddress,
+    SIZE_16KB
+    );
+
+  //
+  // Now BSP does its job.
+  //
+  BspApAcceptMemoryResourceRange (0, CpusNum, PhysicalStart, PhysicalEnd);
+
+  MpSerializeEnd ();
+
+  return EFI_SUCCESS;
 }
 
 /**
@@ -370,21 +578,27 @@ ValidateHobList (
 **/
 EFI_STATUS
 EFIAPI
-ProcessHobList (
+AcceptMemoryPhase1 (
   IN CONST VOID  *VmmHobList
   )
 {
   EFI_STATUS            Status;
   EFI_PEI_HOB_POINTERS  Hob;
   EFI_PHYSICAL_ADDRESS  PhysicalEnd;
-  UINT64                ResourceLength;
-  UINT64                AccumulateAcceptedMemory;
+  EFI_PHYSICAL_ADDRESS  Phase1PhysicalEnd;
+  UINT64                StartTsc;
+  UINT64                EndTsc;
 
   Status = EFI_SUCCESS;
   ASSERT (VmmHobList != NULL);
   Hob.Raw = (UINT8 *)VmmHobList;
 
-  AccumulateAcceptedMemory = 0;
+  Phase1PhysicalEnd = (PHYSICAL_ADDRESS)FixedPcdGet64 (PcdTdxAcceptMemoryPhase1EndAddress);
+  if (Phase1PhysicalEnd == 0) {
+    Phase1PhysicalEnd = BASE_4GB;
+  }
+
+  StartTsc = AsmReadTsc ();
 
   //
   // Parse the HOB list until end of list or matching type is found.
@@ -399,14 +613,15 @@ ProcessHobList (
         DEBUG ((DEBUG_INFO, "ResourceLength: 0x%llx\n", Hob.ResourceDescriptor->ResourceLength));
         DEBUG ((DEBUG_INFO, "Owner: %g\n\n", &Hob.ResourceDescriptor->Owner));
 
-        PhysicalEnd    = Hob.ResourceDescriptor->PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
-        ResourceLength = Hob.ResourceDescriptor->ResourceLength;
+        PhysicalEnd = Hob.ResourceDescriptor->PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
 
-        if (Hob.ResourceDescriptor->PhysicalStart >= BASE_4GB) {
-          //
-          // In current stage, we only accept the memory under 4G
-          //
+        if (Hob.ResourceDescriptor->PhysicalStart >= Phase1PhysicalEnd) {
+          SET_ACCEPT_MEMORY_PHASE1_END_ADDRESS (Phase1PhysicalEnd);
           break;
+        }
+
+        if (PhysicalEnd >= Phase1PhysicalEnd) {
+          PhysicalEnd = Phase1PhysicalEnd;
         }
 
         Status = BspAcceptMemoryResourceRange (
@@ -417,12 +632,161 @@ ProcessHobList (
           break;
         }
 
-        AccumulateAcceptedMemory += ResourceLength;
+        if (PhysicalEnd == Phase1PhysicalEnd) {
+          // record the phase1 PhysicalEnd in workarea
+          SET_ACCEPT_MEMORY_PHASE1_END_ADDRESS (PhysicalEnd);
+          break;
+        }
       }
     }
 
     Hob.Raw = GET_NEXT_HOB (Hob);
   }
+
+  EndTsc = AsmReadTsc ();
+  SET_ACCEPT_MEMORY_PHASE1_TSC_CNT (EndTsc - StartTsc);
+
+  ASSERT (ACCEPT_MEMORY_PHASE1_END_ADDRESS != 0);
+
+  return Status;
+}
+
+VOID
+DumpMemoryAcceptInformation (
+  VOID
+  )
+{
+  volatile MP_WAKEUP_MAILBOX  *MailBox;
+  UINT32                      Index;
+  UINT64                      TotalPages;
+
+  TotalPages = 0;
+  MailBox    = (volatile MP_WAKEUP_MAILBOX *)GetTdxMailBox ();
+
+  DEBUG ((
+    DEBUG_INFO,
+    "Phase1-End: %llx, Phase2-End: %llx\n",
+    ACCEPT_MEMORY_PHASE1_END_ADDRESS,
+    ACCEPT_MEMORY_PHASE2_END_ADDRESS
+    ));
+
+  DEBUG ((DEBUG_INFO, "BSP/APs Tallies:\n"));
+
+  for (Index = 0; Index < GetCpusNum (); Index++) {
+    TotalPages += MailBox->Tallies[Index];
+
+    DEBUG ((DEBUG_INFO, "%8x", MailBox->Tallies[Index]));
+
+    if ((Index+1) % 8 == 0) {
+      DEBUG ((DEBUG_INFO, "\n"));
+    }
+  }
+
+  DEBUG ((DEBUG_INFO, "\n"));
+
+  DEBUG ((DEBUG_INFO, "Accept: %llx pages, %llx bytes\n", TotalPages, EFI_PAGES_TO_SIZE (TotalPages)));
+}
+
+EFI_STATUS
+EFIAPI
+AcceptMemoryPhase2 (
+  IN CONST VOID  *VmmHobList
+  )
+{
+  EFI_STATUS            Status;
+  EFI_PEI_HOB_POINTERS  Hob;
+  EFI_PHYSICAL_ADDRESS  PhysicalStart;
+  EFI_PHYSICAL_ADDRESS  PhysicalEnd;
+  EFI_PHYSICAL_ADDRESS  Phase1PhysicalEnd;
+  EFI_PHYSICAL_ADDRESS  Phase2PhysicalEnd;
+  UINT64                StartTsc;
+  UINT64                EndTsc;
+
+  DEBUG ((DEBUG_INFO, "AcceptMemoryPhase2...\n"));
+
+  Status = EFI_SUCCESS;
+
+  ASSERT (VmmHobList != NULL);
+  Hob.Raw = (UINT8 *)VmmHobList;
+
+  Phase1PhysicalEnd = ACCEPT_MEMORY_PHASE1_END_ADDRESS;
+  Phase2PhysicalEnd = (PHYSICAL_ADDRESS)FixedPcdGet64 (PcdTdxAcceptMemoryPhase2EndAddress);
+  if (Phase2PhysicalEnd == 0) {
+    Phase2PhysicalEnd = MAX_UINT64;
+  }
+
+  StartTsc = AsmReadTsc ();
+
+  //
+  // Parse the HOB list until end of list or matching type is found.
+  //
+  while (!END_OF_HOB_LIST (Hob)) {
+    if (Hob.Header->HobType == EFI_HOB_TYPE_RESOURCE_DESCRIPTOR) {
+      DEBUG ((DEBUG_INFO, "\nResourceType: 0x%x\n", Hob.ResourceDescriptor->ResourceType));
+
+      if (Hob.ResourceDescriptor->ResourceType == BZ3937_EFI_RESOURCE_MEMORY_UNACCEPTED) {
+        PhysicalStart = Hob.ResourceDescriptor->PhysicalStart;
+        PhysicalEnd   = PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
+
+        if (PhysicalEnd <= Phase1PhysicalEnd) {
+          // this memory region has been accepted. Skipped it.
+          Hob.Raw = GET_NEXT_HOB (Hob);
+          continue;
+        }
+
+        if (PhysicalStart >= Phase2PhysicalEnd) {
+          // this memory region is not to be accepted. And we're done.
+          break;
+        }
+
+        if (PhysicalStart >= Phase1PhysicalEnd) {
+          // this memory region has not been acceted.
+        } else if ((PhysicalStart < Phase1PhysicalEnd) && (PhysicalEnd > Phase1PhysicalEnd)) {
+          // part of the memory region has been accepted.
+          PhysicalStart = Phase1PhysicalEnd;
+        }
+
+        // then compare the PhysicalEnd with Phase2PhysicalEnd
+        if (PhysicalEnd >= Phase2PhysicalEnd) {
+          PhysicalEnd = Phase2PhysicalEnd;
+        }
+
+        DEBUG ((DEBUG_INFO, "ResourceAttribute: 0x%x\n", Hob.ResourceDescriptor->ResourceAttribute));
+        DEBUG ((DEBUG_INFO, "PhysicalStart: 0x%llx\n", Hob.ResourceDescriptor->PhysicalStart));
+        DEBUG ((DEBUG_INFO, "ResourceLength: 0x%llx\n", Hob.ResourceDescriptor->ResourceLength));
+        DEBUG ((DEBUG_INFO, "Owner: %g\n\n", &Hob.ResourceDescriptor->Owner));
+
+        // Now we're ready to accept memory [PhysicalStart, PhysicalEnd)
+        Status = MpAcceptMemoryResourceRange (
+                   PhysicalStart,
+                   PhysicalEnd
+                   );
+        if (EFI_ERROR (Status)) {
+          ASSERT (FALSE);
+          break;
+        }
+
+        // record the PhysicalEnd in workarea as Phase2PhysicalEnd
+        SET_ACCEPT_MEMORY_PHASE2_END_ADDRESS (PhysicalEnd);
+
+        if (PhysicalEnd == Phase2PhysicalEnd) {
+          break;
+        }
+      }
+    }
+
+    Hob.Raw = GET_NEXT_HOB (Hob);
+  }
+
+  EndTsc = AsmReadTsc ();
+  SET_ACCEPT_MEMORY_PHASE2_TSC_CNT (EndTsc - StartTsc);
+
+  if (ACCEPT_MEMORY_PHASE2_END_ADDRESS == 0) {
+    SET_ACCEPT_MEMORY_PHASE2_END_ADDRESS (Phase1PhysicalEnd);
+  }
+
+  // print out the summary information of memory accept
+  DumpMemoryAcceptInformation ();
 
   return Status;
 }
@@ -440,7 +804,7 @@ ProcessHobList (
 **/
 EFI_STATUS
 EFIAPI
-ProcessTdxHobList (
+PlatformProcessTdxHobListPhase1 (
   VOID
   )
 {
@@ -471,7 +835,7 @@ ProcessTdxHobList (
   //
   // Process Hoblist to accept memory
   //
-  Status = ProcessHobList (TdHob);
+  Status = AcceptMemoryPhase1 (TdHob);
 
   return Status;
 }
@@ -504,10 +868,10 @@ BuildResourceDescriptorHobForUnacceptedMemory (
   PhysicalEnd       = PhysicalStart + ResourceLength;
 
   //
-  // In the first stage of lazy-accept, all the memory under 4G will be accepted.
-  // The memory above 4G will not be accepted.
+  // Accept memory is split into 2 phases:
+  // Phase-2 accept a small size, phase-2 accept a bigger size.
   //
-  MaxAcceptedMemoryAddress = BASE_4GB;
+  MaxAcceptedMemoryAddress = ACCEPT_MEMORY_PHASE2_END_ADDRESS;
 
   if (PhysicalEnd <= MaxAcceptedMemoryAddress) {
     //
@@ -520,6 +884,19 @@ BuildResourceDescriptorHobForUnacceptedMemory (
     // This memory region hasn't been accepted.
     // So keep the ResourceType and ResourceAttribute unchange.
     //
+  } else if ((PhysicalStart < MaxAcceptedMemoryAddress) && (PhysicalEnd > MaxAcceptedMemoryAddress)) {
+    //
+    // Left part of the memory region is accepted. The right part is unaccepted.
+    //
+    BuildResourceDescriptorHob (
+      EFI_RESOURCE_SYSTEM_MEMORY,
+      ResourceAttribute | (EFI_RESOURCE_ATTRIBUTE_PRESENT | EFI_RESOURCE_ATTRIBUTE_INITIALIZED | EFI_RESOURCE_ATTRIBUTE_TESTED),
+      PhysicalStart,
+      MaxAcceptedMemoryAddress - PhysicalStart
+      );
+
+    PhysicalStart  = MaxAcceptedMemoryAddress;
+    ResourceLength = PhysicalEnd - MaxAcceptedMemoryAddress;
   }
 
   BuildResourceDescriptorHob (
@@ -583,6 +960,40 @@ TransferTdxHobList (
   }
 }
 
+VOID
+DumpMemoryAcceptTime (
+  VOID
+  )
+{
+  UINT64 TscFreq;
+  UINT64 Phase1TscCnt, Phase2TscCnt;
+
+  TscFreq = CalcTscFreq ();
+  RELEASE_DEBUG ((DEBUG_INFO, "TscFreq: %llu\n", TscFreq));
+
+  Phase1TscCnt = ACCEPT_MEMORY_PHASE1_TSC_CNT;
+  RELEASE_DEBUG ((DEBUG_INFO, "  Phase1 : physical_end_addr=0x%llx, time=%llu ms\n", ACCEPT_MEMORY_PHASE1_END_ADDRESS, TSC_CNT_TO_MS(Phase1TscCnt, TscFreq)));
+
+  Phase2TscCnt = ACCEPT_MEMORY_PHASE2_TSC_CNT;
+  RELEASE_DEBUG ((DEBUG_INFO, "  Phase2 : physical_end_addr=0x%llx, time=%llu ms\n", ACCEPT_MEMORY_PHASE2_END_ADDRESS, TSC_CNT_TO_MS(Phase2TscCnt, TscFreq)));
+}
+
+EFI_STATUS
+EFIAPI
+PlatformProcessTdxHobListPhase2 (
+  VOID
+  )
+{
+  AcceptMemoryPhase2 ((VOID *)(UINTN)FixedPcdGet32 (PcdOvmfSecGhcbBase));
+
+  // dump the time used in phase1/phase2
+  DumpMemoryAcceptTime ();
+
+  TransferTdxHobList ();
+
+  return EFI_SUCCESS;
+}
+
 /**
   In Tdx guest, the system memory is passed in TdHob by host VMM. So
   the major task of PlatformTdxPublishRamRegions is to walk thru the
@@ -600,8 +1011,6 @@ PlatformTdxPublishRamRegions (
   if (!TdIsEnabled ()) {
     return;
   }
-
-  TransferTdxHobList ();
 
   //
   // The memory region defined by PcdOvmfSecGhcbBackupBase is pre-allocated by

@@ -38,6 +38,8 @@
   DEFINE MPT_SCSI_ENABLE         = FALSE
   DEFINE LSI_SCSI_ENABLE         = FALSE
 
+  DEFINE LAZY_ACCEPT_MAX_PHYSICAL_END = 0x100000000
+
   #
   # Flash size selection. Setting FD_SIZE_IN_KB on the command line directly to
   # one of the supported values, in place of any of the convenience macros, is
@@ -462,6 +464,14 @@
 
   # Point to the MdeModulePkg/Application/UiApp/UiApp.inf
   gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{ 0x21, 0xaa, 0x2c, 0x46, 0x14, 0x76, 0x03, 0x45, 0x83, 0x6e, 0x8a, 0xb6, 0xf4, 0x66, 0x23, 0x31 }
+
+  ## phase1 accept till 256M
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptMemoryPhase1EndAddress|0x10000000
+  ## phase2 accept till 12G
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptMemoryPhase2EndAddress|0x100000000
+  ## chunk size 32MB
+  gUefiOvmfPkgTokenSpaceGuid.PcdTdxAcceptMemoryChunkSize|0x2000000
+
 
 ################################################################################
 #

@@ -216,7 +216,13 @@ PlatformMaxCpuCountInitialization (
 **/
 EFI_STATUS
 EFIAPI
-ProcessTdxHobList (
+PlatformProcessTdxHobListPhase1 (
+  VOID
+  );
+
+EFI_STATUS
+EFIAPI
+PlatformProcessTdxHobListPhase2 (
   VOID
   );
 
