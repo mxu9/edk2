@@ -24,6 +24,7 @@
 [Sources]
   SecMain.c
   X64/SecEntry.nasm
+  X64/IntelTdx.nasm
 
 [Packages]
   MdePkg/MdePkg.dec
