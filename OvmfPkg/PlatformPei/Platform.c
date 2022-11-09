@@ -347,6 +347,8 @@ InitializePlatform (
   S3Verification ();
   BootModeInitialization (&mPlatformInfoHob);
 
+  PlatformTdxTransferHobList ();
+
   //
   // Query Host Bridge DID
   //
