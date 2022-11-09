@@ -408,6 +408,9 @@
   #  check to decide whether to abort dispatch of the driver it is linked into.
   gUefiOvmfPkgTokenSpaceGuid.PcdEntryPointOverrideFwCfgVarName|""|VOID*|0x68
 
+  ## The physical end address of lazy-accept. 0 means accept all the un-accepted memories.
+  gUefiOvmfPkgTokenSpaceGuid.PcdLazyAcceptPhysicalEndAddress|0|UINT64|0x6a
+
 [PcdsDynamic, PcdsDynamicEx]
   gUefiOvmfPkgTokenSpaceGuid.PcdEmuVariableEvent|0|UINT64|2
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfFlashVariablesEnable|FALSE|BOOLEAN|0x10
