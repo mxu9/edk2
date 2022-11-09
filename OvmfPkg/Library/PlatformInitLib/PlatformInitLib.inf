@@ -100,5 +100,7 @@
   gUefiOvmfPkgTokenSpaceGuid.PcdOvmfFlashNvStorageVariableBase
   gUefiOvmfPkgTokenSpaceGuid.PcdCfvRawDataSize
 
+  gUefiOvmfPkgTokenSpaceGuid.PcdLazyAcceptPhysicalEndAddress
+
 [FeaturePcd]
   gEfiMdeModulePkgTokenSpaceGuid.PcdDxeIplSwitchToLongMode

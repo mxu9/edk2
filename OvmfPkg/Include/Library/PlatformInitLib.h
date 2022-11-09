@@ -235,6 +235,17 @@ PlatformTdxPublishRamRegions (
   );
 
 /**
+  Transfer the HobList(passed by VMM) for the TD to the final HobList for Dxe.
+  The Hobs transferred in this function are ResourceDescriptor hob and
+  MemoryAllocation hob.
+**/
+VOID
+EFIAPI
+PlatformTdxTransferHobList (
+  VOID
+  );
+
+/**
   Check the integrity of NvVarStore.
 
   @param[in] NvVarStoreBase - A pointer to NvVarStore header

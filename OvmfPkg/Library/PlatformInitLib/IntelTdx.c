@@ -376,15 +376,18 @@ ProcessHobList (
 {
   EFI_STATUS            Status;
   EFI_PEI_HOB_POINTERS  Hob;
+  EFI_PHYSICAL_ADDRESS  PhysicalStart;
   EFI_PHYSICAL_ADDRESS  PhysicalEnd;
-  UINT64                ResourceLength;
-  UINT64                AccumulateAcceptedMemory;
+  UINT64                LazyAcceptPhysicalEndAddress;
 
   Status = EFI_SUCCESS;
   ASSERT (VmmHobList != NULL);
   Hob.Raw = (UINT8 *)VmmHobList;
 
-  AccumulateAcceptedMemory = 0;
+  LazyAcceptPhysicalEndAddress = FixedPcdGet64 (PcdLazyAcceptPhysicalEndAddress);
+  if (LazyAcceptPhysicalEndAddress == 0) {
+    LazyAcceptPhysicalEndAddress = MAX_UINT64;
+  }
 
   //
   // Parse the HOB list until end of list or matching type is found.
@@ -399,25 +402,28 @@ ProcessHobList (
         DEBUG ((DEBUG_INFO, "ResourceLength: 0x%llx\n", Hob.ResourceDescriptor->ResourceLength));
         DEBUG ((DEBUG_INFO, "Owner: %g\n\n", &Hob.ResourceDescriptor->Owner));
 
-        PhysicalEnd    = Hob.ResourceDescriptor->PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
-        ResourceLength = Hob.ResourceDescriptor->ResourceLength;
+        PhysicalStart = Hob.ResourceDescriptor->PhysicalStart;
+        PhysicalEnd   = PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
 
-        if (Hob.ResourceDescriptor->PhysicalStart >= BASE_4GB) {
-          //
-          // In current stage, we only accept the memory under 4G
-          //
+        if (PhysicalStart >= LazyAcceptPhysicalEndAddress) {
           break;
         }
 
+        if (PhysicalEnd >= LazyAcceptPhysicalEndAddress) {
+          //
+          // This memory region is to be split into 2 parts.
+          // The left part is to be accepted.
+          //
+          PhysicalEnd = LazyAcceptPhysicalEndAddress;
+        }
+
         Status = BspAcceptMemoryResourceRange (
-                   Hob.ResourceDescriptor->PhysicalStart,
+                   PhysicalStart,
                    PhysicalEnd
                    );
         if (EFI_ERROR (Status)) {
           break;
         }
-
-        AccumulateAcceptedMemory += ResourceLength;
       }
     }
 
@@ -503,11 +509,10 @@ BuildResourceDescriptorHobForUnacceptedMemory (
   ResourceLength    = Hob->ResourceLength;
   PhysicalEnd       = PhysicalStart + ResourceLength;
 
-  //
-  // In the first stage of lazy-accept, all the memory under 4G will be accepted.
-  // The memory above 4G will not be accepted.
-  //
-  MaxAcceptedMemoryAddress = BASE_4GB;
+  MaxAcceptedMemoryAddress = FixedPcdGet64 (PcdLazyAcceptPhysicalEndAddress);
+  if (MaxAcceptedMemoryAddress == 0) {
+    MaxAcceptedMemoryAddress = MAX_UINT64;
+  }
 
   if (PhysicalEnd <= MaxAcceptedMemoryAddress) {
     //
@@ -520,6 +525,19 @@ BuildResourceDescriptorHobForUnacceptedMemory (
     // This memory region hasn't been accepted.
     // So keep the ResourceType and ResourceAttribute unchange.
     //
+  } else if ((PhysicalStart < MaxAcceptedMemoryAddress) && (PhysicalEnd > MaxAcceptedMemoryAddress)) {
+    //
+    // This memory region is split into 2 parts. The left part is accepted. The right part is not accepted.
+    //
+    BuildResourceDescriptorHob (
+      EFI_RESOURCE_SYSTEM_MEMORY,
+      ResourceAttribute | (EFI_RESOURCE_ATTRIBUTE_PRESENT | EFI_RESOURCE_ATTRIBUTE_INITIALIZED | EFI_RESOURCE_ATTRIBUTE_TESTED),
+      PhysicalStart,
+      MaxAcceptedMemoryAddress - PhysicalStart
+      );
+
+    PhysicalStart  = MaxAcceptedMemoryAddress;
+    ResourceLength = PhysicalEnd - MaxAcceptedMemoryAddress;
   }
 
   BuildResourceDescriptorHob (
@@ -584,6 +602,22 @@ TransferTdxHobList (
 }
 
 /**
+  Transfer the HobList(passed by VMM) for the TD to the final HobList for Dxe.
+  The Hobs transferred in this function are ResourceDescriptor hob and
+  MemoryAllocation hob.
+**/
+VOID
+EFIAPI
+PlatformTdxTransferHobList (
+  VOID
+  )
+{
+  if (TdIsEnabled ()) {
+    TransferTdxHobList ();
+  }
+}
+
+/**
   In Tdx guest, the system memory is passed in TdHob by host VMM. So
   the major task of PlatformTdxPublishRamRegions is to walk thru the
   TdHob list and transfer the ResourceDescriptorHob and MemoryAllocationHob
@@ -600,8 +634,6 @@ PlatformTdxPublishRamRegions (
   if (!TdIsEnabled ()) {
     return;
   }
-
-  TransferTdxHobList ();
 
   //
   // The memory region defined by PcdOvmfSecGhcbBackupBase is pre-allocated by

@@ -302,6 +302,35 @@ GetHighestSystemMemoryAddressFromPvhMemmap (
 }
 
 UINT32
+GetSystemMemorySizeBelow4gbForTdx (
+  VOID
+  )
+{
+  EFI_PEI_HOB_POINTERS  Hob;
+  UINT64                LowerMemorySize;
+
+  ASSERT (TdIsEnabled ());
+
+  LowerMemorySize = 0;
+
+  Hob.Raw = (UINT8 *)(UINTN)GetHobList ();
+
+  while (!END_OF_HOB_LIST (Hob)) {
+    if (Hob.Header->HobType == EFI_HOB_TYPE_RESOURCE_DESCRIPTOR) {
+      if (Hob.ResourceDescriptor->ResourceType == EFI_RESOURCE_SYSTEM_MEMORY) {
+        if (Hob.ResourceDescriptor->PhysicalStart + Hob.ResourceDescriptor->ResourceLength < BASE_4GB) {
+          LowerMemorySize += Hob.ResourceDescriptor->ResourceLength;
+        }
+      }
+    }
+
+    Hob.Raw = GET_NEXT_HOB (Hob);
+  }
+
+  return (UINT64)LowerMemorySize;
+}
+
+UINT32
 EFIAPI
 PlatformGetSystemMemorySizeBelow4gb (
   IN EFI_HOB_PLATFORM_INFO  *PlatformInfoHob
@@ -315,6 +344,10 @@ PlatformGetSystemMemorySizeBelow4gb (
   if (PlatformInfoHob->HostBridgeDevId == CLOUDHV_DEVICE_ID) {
     // Get the information from PVH memmap
     return (UINT32)GetHighestSystemMemoryAddressFromPvhMemmap (TRUE);
+  }
+
+  if (TdIsEnabled ()) {
+    return GetSystemMemorySizeBelow4gbForTdx ();
   }
 
   Status = PlatformScanOrAdd64BitE820Ram (FALSE, &LowerMemorySize, NULL);
