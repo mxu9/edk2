@@ -78,13 +78,25 @@ ConstructFwHobList (
   UINT64                ResourceLength;
   EFI_PHYSICAL_ADDRESS  LowMemoryStart;
   UINT64                LowMemoryLength;
+  UINT64                LazyAcceptPhysicalEnd;
+  UINT64                MaxPhysicalEndUnder4G;
 
   ASSERT (VmmHobList != NULL);
 
   Hob.Raw = (UINT8 *)VmmHobList;
 
-  LowMemoryLength = 0;
-  LowMemoryStart  = 0;
+  LowMemoryLength       = 0;
+  LowMemoryStart        = 0;
+  MaxPhysicalEndUnder4G = BASE_4GB;
+
+  LazyAcceptPhysicalEnd = FixedPcdGet64 (PcdLazyAcceptPhysicalEndAddress);
+  if (LazyAcceptPhysicalEnd == 0) {
+    LazyAcceptPhysicalEnd = MAX_UINT64;
+  }
+
+  if (MaxPhysicalEndUnder4G < LazyAcceptPhysicalEnd) {
+    MaxPhysicalEndUnder4G = LazyAcceptPhysicalEnd;
+  }
 
   //
   // Parse the HOB list until end of list or matching type is found.
@@ -95,7 +107,7 @@ ConstructFwHobList (
         PhysicalEnd    = Hob.ResourceDescriptor->PhysicalStart + Hob.ResourceDescriptor->ResourceLength;
         ResourceLength = Hob.ResourceDescriptor->ResourceLength;
 
-        if (PhysicalEnd <= BASE_4GB) {
+        if (PhysicalEnd <= MaxPhysicalEndUnder4G) {
           if (ResourceLength > LowMemoryLength) {
             LowMemoryStart  = Hob.ResourceDescriptor->PhysicalStart;
             LowMemoryLength = ResourceLength;
