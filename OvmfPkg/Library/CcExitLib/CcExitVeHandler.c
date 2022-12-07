@@ -13,6 +13,10 @@
 #include <Library/BaseMemoryLib.h>
 #include <IndustryStandard/Tdx.h>
 #include <IndustryStandard/InstructionParsing.h>
+#include "CcInstruction.h"
+
+#define TDX_MMIO_READ   0
+#define TDX_MMIO_WRITE  1
 
 typedef union {
   struct {
@@ -216,14 +220,15 @@ STATIC
 VOID
 EFIAPI
 TdxDecodeInstruction (
-  IN UINT8  *Rip
+  IN UINT8  *Rip,
+  IN UINT32 Length
   )
 {
   UINTN  i;
 
   DEBUG ((DEBUG_INFO, "TDX: #TD[EPT] instruction (%p):", Rip));
-  for (i = 0; i < 15; i++) {
-    DEBUG ((DEBUG_INFO, "%02x:", Rip[i]));
+  for (i = 0; i < MIN(15, Length); i++) {
+    DEBUG ((DEBUG_INFO, "%02x ", Rip[i]));
   }
 
   DEBUG ((DEBUG_INFO, "\n"));
@@ -236,51 +241,335 @@ TdxDecodeInstruction (
   }
 
 STATIC
-UINT64 *
-EFIAPI
-GetRegFromContext (
-  IN EFI_SYSTEM_CONTEXT_X64  *Regs,
-  IN UINTN                   RegIndex
+UINT64
+TdxMmioReadWrite (
+  IN UINT32  MmioSize,
+  IN UINT32  ReadOrWrite,
+  IN UINT64  GuestPA,
+  IN UINT64  *Val
   )
 {
-  switch (RegIndex) {
-    case 0: return &Regs->Rax;
-      break;
-    case 1: return &Regs->Rcx;
-      break;
-    case 2: return &Regs->Rdx;
-      break;
-    case 3: return &Regs->Rbx;
-      break;
-    case 4: return &Regs->Rsp;
-      break;
-    case 5: return &Regs->Rbp;
-      break;
-    case 6: return &Regs->Rsi;
-      break;
-    case 7: return &Regs->Rdi;
-      break;
-    case 8: return &Regs->R8;
-      break;
-    case 9: return &Regs->R9;
-      break;
-    case 10: return &Regs->R10;
-      break;
-    case 11: return &Regs->R11;
-      break;
-    case 12: return &Regs->R12;
-      break;
-    case 13: return &Regs->R13;
-      break;
-    case 14: return &Regs->R14;
-      break;
-    case 15: return &Regs->R15;
-      break;
+  UINT64  Status;
+
+  if ((MmioSize != 1) && (MmioSize != 2) && (MmioSize != 4) && (MmioSize != 8)) {
+    DEBUG ((DEBUG_ERROR, ">>%d", MmioSize));
+    ASSERT (FALSE);
+    return EFI_INVALID_PARAMETER;
   }
 
-  return NULL;
+  if (Val == NULL) {
+    ASSERT (FALSE);
+    return EFI_INVALID_PARAMETER;
+  }
+
+  if (ReadOrWrite == TDX_MMIO_READ) {
+    Status = TdVmCall (TDVMCALL_MMIO, MmioSize, TDX_MMIO_READ, GuestPA, 0, Val);
+  } else if (ReadOrWrite == TDX_MMIO_WRITE) {
+    Status = TdVmCall (TDVMCALL_MMIO, MmioSize, TDX_MMIO_WRITE, GuestPA, *Val, 0);
+  } else {
+    ASSERT (FALSE);
+    Status = EFI_INVALID_PARAMETER;
+  }
+
+  return Status;
 }
 
+/**
+  Handle an MMIO event.
+
+  Use the TDVMCALL instruction to handle either an mmio read or an mmio write.
+
+  @param[in, out] Regs             x64 processor context
+  @param[in]      Veinfo           VE Info
+
+  @retval 0                        Event handled successfully
+  @return                          New exception value to propagate
+**/
+STATIC
+INTN
+EFIAPI
+MmioExit (
+  IN OUT EFI_SYSTEM_CONTEXT_X64  *Regs,
+  IN TDCALL_VEINFO_RETURN_DATA   *Veinfo
+  )
+{
+  UINT64               Status;
+  UINT32               Bytes;
+  UINT8                OpCode;
+  UINT8                SignByte;
+  TD_RETURN_DATA       TdReturnData;
+  UINT8                Gpaw;
+  UINT64               TdSharedPageMask;
+  UINT64               Address;
+  UINT64               Val;
+  UINT64               *Register;
+  CC_INSTRUCTION_DATA  InstructionData;
+
+  Status = TdCall (TDCALL_TDINFO, 0, 0, 0, &TdReturnData);
+  if (Status == TDX_EXIT_REASON_SUCCESS) {
+    Gpaw             = (UINT8)(TdReturnData.TdInfo.Gpaw & 0x3f);
+    TdSharedPageMask = 1ULL << (Gpaw - 1);
+  } else {
+    DEBUG ((DEBUG_ERROR, "TDCALL failed with status=%llx\n", Status));
+    return Status;
+  }
+
+  if ((Veinfo->GuestPA & TdSharedPageMask) == 0) {
+    DEBUG ((DEBUG_ERROR, "EPT-violation #VE on private memory is not allowed!"));
+    TdVmCall (TDVMCALL_HALT, 0, 0, 0, 0, 0);
+    CpuDeadLoop ();
+  }
+
+  CcInitInstructionData (&InstructionData, NULL, Regs);
+
+  Bytes  = 0;
+  OpCode = *(InstructionData.OpCodes);
+  if (OpCode == TWO_BYTE_OPCODE_ESCAPE) {
+    OpCode = *(InstructionData.OpCodes + 1);
+  }
+
+  switch (OpCode) {
+    //
+    // MMIO write (MOV reg/memX, regX)
+    //
+    case 0x88:
+      Bytes = 1;
+    //
+    // fall through
+    //
+    case 0x89:
+      CcDecodeModRm (Regs, &InstructionData);
+      Bytes = ((Bytes != 0) ? Bytes :
+               (InstructionData.DataSize == Size16Bits) ? 2 :
+               (InstructionData.DataSize == Size32Bits) ? 4 :
+               (InstructionData.DataSize == Size64Bits) ? 8 :
+               0);
+
+      if (InstructionData.Ext.ModRm.Mod == 3) {
+        ASSERT (FALSE);
+        return EFI_UNSUPPORTED;
+      }
+
+      ASSERT (Veinfo->GuestPA == (InstructionData.Ext.RmData | TdSharedPageMask));
+
+      Status = TdxMmioReadWrite (Bytes, TDX_MMIO_WRITE, Veinfo->GuestPA, &InstructionData.Ext.RegData);
+      break;
+
+    //
+    // MMIO write (MOV moffsetX, aX)
+    //
+    case 0xA2:
+      Bytes = 1;
+    //
+    // fall through
+    //
+    case 0xA3:
+      Bytes = ((Bytes != 0) ? Bytes :
+               (InstructionData.DataSize == Size16Bits) ? 2 :
+               (InstructionData.DataSize == Size32Bits) ? 4 :
+               (InstructionData.DataSize == Size64Bits) ? 8 :
+               0);
+
+      InstructionData.ImmediateSize = (UINTN)(1 << InstructionData.AddrSize);
+      InstructionData.End          += InstructionData.ImmediateSize;
+      Address                       = 0;
+      CopyMem (&Address, InstructionData.Immediate, InstructionData.ImmediateSize);
+      ASSERT (Address == Veinfo->GuestPA);
+
+      Status = TdxMmioReadWrite (Bytes, TDX_MMIO_WRITE, Veinfo->GuestPA, &Regs->Rax);
+      break;
+
+    //
+    // MMIO write (MOV reg/memX, immX)
+    //
+    case 0xC6:
+      Bytes = 1;
+    //
+    // fall through
+    //
+    case 0xC7:
+      CcDecodeModRm (Regs, &InstructionData);
+      Bytes = ((Bytes != 0) ? Bytes :
+               (InstructionData.DataSize == Size16Bits) ? 2 :
+               (InstructionData.DataSize == Size32Bits) ? 4 :
+               (InstructionData.DataSize == Size64Bits) ? 8 :   // SEV not check this.
+               0);
+
+      InstructionData.ImmediateSize = Bytes;
+      InstructionData.End          += Bytes;
+
+      Val = 0;
+      CopyMem (&Val, InstructionData.Immediate, InstructionData.ImmediateSize);
+
+      ASSERT (Veinfo->GuestPA == (InstructionData.Ext.RmData | TdSharedPageMask));
+      Status = TdxMmioReadWrite (Bytes, TDX_MMIO_WRITE, Veinfo->GuestPA, &Val);
+      break;
+
+    //
+    // MMIO read (MOV regX, reg/memX)
+    //
+    case 0x8A:
+      Bytes = 1;
+    //
+    // fall through
+    //
+    case 0x8B:
+      CcDecodeModRm (Regs, &InstructionData);
+      Bytes = ((Bytes != 0) ? Bytes :
+               (InstructionData.DataSize == Size16Bits) ? 2 :
+               (InstructionData.DataSize == Size32Bits) ? 4 :
+               (InstructionData.DataSize == Size64Bits) ? 8 :
+               0);
+      if (InstructionData.Ext.ModRm.Mod == 3) {
+        //
+        // NPF on two register operands???
+        //
+        ASSERT (FALSE);
+        return EFI_UNSUPPORTED;
+      }
+
+      ASSERT (Veinfo->GuestPA == (InstructionData.Ext.RmData | TdSharedPageMask));
+
+      Val    = 0;
+      Status = TdxMmioReadWrite (Bytes, TDX_MMIO_READ, Veinfo->GuestPA, &Val);
+      if (Status != 0) {
+        break;
+      }
+
+      Register = CcGetRegisterPointer (Regs, InstructionData.Ext.ModRm.Reg);
+      if (Bytes == 4) {
+        //
+        // Zero-extend for 32-bit operation
+        //
+        *Register = 0;
+      }
+
+      CopyMem (Register, &Val, Bytes);
+      break;
+
+    //
+    // MMIO read (MOV aX, moffsetX)
+    //
+    case 0xA0:
+      Bytes = 1;
+    //
+    // fall through
+    //
+    case 0xA1:
+      Bytes = ((Bytes != 0) ? Bytes :
+               (InstructionData.DataSize == Size16Bits) ? 2 :
+               (InstructionData.DataSize == Size32Bits) ? 4 :
+               (InstructionData.DataSize == Size64Bits) ? 8 :
+               0);
+
+      InstructionData.ImmediateSize = (UINTN)(1 << InstructionData.AddrSize);
+      InstructionData.End          += InstructionData.ImmediateSize;
+
+      Address = 0;
+      CopyMem (
+        &Address,
+        InstructionData.Immediate,
+        InstructionData.ImmediateSize
+        );
+
+      ASSERT (Veinfo->GuestPA == (Address | TdSharedPageMask));
+
+      Val    = 0;
+      Status = TdxMmioReadWrite (Bytes, TDX_MMIO_READ, Veinfo->GuestPA, &Val);
+      if (Status != 0) {
+        break;
+      }
+
+      if (Bytes == 4) {
+        //
+        // Zero-extend for 32-bit operation
+        //
+        Regs->Rax = 0;
+      }
+
+      CopyMem (&Regs->Rax, &Val, Bytes);
+      break;
+
+    //
+    // MMIO read w/ zero-extension ((MOVZX regX, reg/memX)
+    //
+    case 0xB6:
+      Bytes = 1;
+    //
+    // fall through
+    //
+    case 0xB7:
+      CcDecodeModRm (Regs, &InstructionData);
+      Bytes = (Bytes != 0) ? Bytes : 2;
+
+      ASSERT (Veinfo->GuestPA == (InstructionData.Ext.RmData | TdSharedPageMask));
+
+      Val    = 0;
+      Status = TdxMmioReadWrite (Bytes, TDX_MMIO_READ, Veinfo->GuestPA, &Val);
+      if (Status != 0) {
+        break;
+      }
+
+      Register = CcGetRegisterPointer (Regs, InstructionData.Ext.ModRm.Reg);
+      SetMem (Register, (UINTN)(1 << InstructionData.DataSize), 0);
+      CopyMem (Register, &Val, Bytes);
+
+      break;
+
+    //
+    // MMIO read w/ sign-extension (MOVSX regX, reg/memX)
+    //
+    case 0xBE:
+      Bytes = 1;
+    //
+    // fall through
+    //
+    case 0xBF:
+      CcDecodeModRm (Regs, &InstructionData);
+      Bytes = (Bytes != 0) ? Bytes : 2;
+
+      ASSERT (Veinfo->GuestPA == (InstructionData.Ext.RmData | TdSharedPageMask));
+
+      Val    = 0;
+      Status = TdxMmioReadWrite (Bytes, TDX_MMIO_READ, Veinfo->GuestPA, &Val);
+      if (Status != 0) {
+        break;
+      }
+
+      if (Bytes == 1) {
+        UINT8  *Data;
+        Data     = (UINT8 *)&Val;
+        SignByte = ((*Data & BIT7) != 0) ? 0xFF : 0x00;
+      } else {
+        UINT16  *Data;
+        Data     = (UINT16 *)&Val;
+        SignByte = ((*Data & BIT15) != 0) ? 0xFF : 0x00;
+      }
+
+      Register = CcGetRegisterPointer (Regs, InstructionData.Ext.ModRm.Reg);
+      SetMem (Register, (UINTN)(1 << InstructionData.DataSize), SignByte);
+      CopyMem (Register, &Val, Bytes);
+      break;
+
+    default:
+      DEBUG ((DEBUG_ERROR, "Invalid MMIO opcode (%x)\n", OpCode));
+      Status = EFI_UNSUPPORTED;
+      ASSERT (FALSE);
+  }
+
+  if (Status == 0) {
+    //
+    // We change instruction length to reflect true size so handler can
+    // bump rip
+    //
+    Veinfo->ExitInstructionLength =  (UINT32)(CcInstructionLength (&InstructionData));
+    TdxDecodeInstruction ((UINT8 *)Regs->Rip, Veinfo->ExitInstructionLength);
+  }
+
+  return Status;
+}
+
+#if 0
 /**
   Handle an MMIO event.
 
@@ -446,6 +735,7 @@ MmioExit (
   return Status;
 }
 
+#endif
 /**
   Handle a #VE exception.
 
