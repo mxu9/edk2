@@ -44,6 +44,13 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #include <Library/PerformanceLib.h>
 #include <Library/ReportStatusCodeLib.h>
 #include <Library/Tcg2PhysicalPresenceLib.h>
+#include "Tcg2Dxe.h"
+
+STATIC TD_TCG_MEASURE_ACTION                       MeasureAction                   = NULL;
+STATIC TD_TCG_MEASURE_SEPARATORS                   MeasureSeparators               = NULL;
+STATIC TD_TCG_MEASURE_HANDOFF_TABLES               MeasureHandoffTables            = NULL;
+STATIC TD_TCG_MEASURE_VARIABLE                     MeasureVariable                 = NULL;
+STATIC TD_TCG_MEASURE_LAUNCHOFF_FIRMWARE_DEBUGGER  MeasureLaunchOfFirmwareDebugger = NULL;
 
 #define PERF_ID_TCG2_DXE  0x3120
 
@@ -64,19 +71,6 @@ TCG2_EVENT_INFO_STRUCT  mTcg2EventInfo[] = {
   { &gTcgEventEntryHobGuid,  EFI_TCG2_EVENT_LOG_FORMAT_TCG_1_2 },
   { &gTcgEvent2EntryHobGuid, EFI_TCG2_EVENT_LOG_FORMAT_TCG_2   },
 };
-
-#define TCG_EVENT_LOG_AREA_COUNT_MAX  2
-
-typedef struct {
-  EFI_TCG2_EVENT_LOG_FORMAT    EventLogFormat;
-  EFI_PHYSICAL_ADDRESS         Lasa;
-  UINT64                       Laml;
-  UINTN                        EventLogSize;
-  UINT8                        *LastEvent;
-  BOOLEAN                      EventLogStarted;
-  BOOLEAN                      EventLogTruncated;
-  UINTN                        Next800155EventOffset;
-} TCG_EVENT_LOG_AREA_STRUCT;
 
 typedef struct _TCG_DXE_DATA {
   EFI_TCG2_BOOT_SERVICE_CAPABILITY    BsCap;
@@ -114,33 +108,6 @@ VARIABLE_TYPE  mVariableType[] = {
 };
 
 EFI_HANDLE  mImageHandle;
-
-/**
-  Measure PE image into TPM log based on the authenticode image hashing in
-  PE/COFF Specification 8.0 Appendix A.
-
-  Caution: This function may receive untrusted input.
-  PE/COFF image is external input, so this function will validate its data structure
-  within this image buffer before use.
-
-  Notes: PE/COFF image is checked by BasePeCoffLib PeCoffLoaderGetImageInfo().
-
-  @param[in]  PCRIndex       TPM PCR index
-  @param[in]  ImageAddress   Start address of image buffer.
-  @param[in]  ImageSize      Image size
-  @param[out] DigestList     Digest list of this image.
-
-  @retval EFI_SUCCESS            Successfully measure image.
-  @retval EFI_OUT_OF_RESOURCES   No enough resource to measure image.
-  @retval other error value
-**/
-EFI_STATUS
-MeasurePeImageAndExtend (
-  IN  UINT32                PCRIndex,
-  IN  EFI_PHYSICAL_ADDRESS  ImageAddress,
-  IN  UINTN                 ImageSize,
-  OUT TPML_DIGEST_VALUES    *DigestList
-  );
 
 /**
 
@@ -1926,7 +1893,7 @@ TcgMeasureAction (
 
 **/
 EFI_STATUS
-MeasureHandoffTables (
+TcgMeasureHandoffTables (
   VOID
   )
 {
@@ -2002,6 +1969,24 @@ MeasureSeparatorEvent (
            );
 }
 
+EFI_STATUS
+TcgMeasureSeparatorEvents (
+  VOID
+  )
+{
+  TPM_PCRINDEX  PcrIndex;
+  EFI_STATUS    Status;
+
+  for (PcrIndex = 0; PcrIndex < 7; PcrIndex++) {
+    Status = MeasureSeparatorEvent (PcrIndex);
+    if (EFI_ERROR (Status)) {
+      DEBUG ((DEBUG_ERROR, "Separator Event not Measured to PCR[%d]. Error!\n", PcrIndex));
+    }
+  }
+
+  return Status;
+}
+
 /**
   Measure and log an EFI variable, and extend the measurement result into a specific PCR.
 
@@ -2018,7 +2003,7 @@ MeasureSeparatorEvent (
 
 **/
 EFI_STATUS
-MeasureVariable (
+TcgMeasureVariable (
   IN      TPM_PCRINDEX   PCRIndex,
   IN      TCG_EVENTTYPE  EventType,
   IN      CHAR16         *VarName,
@@ -2331,7 +2316,7 @@ MeasureAllSecureVariables (
 
 **/
 EFI_STATUS
-MeasureLaunchOfFirmwareDebugger (
+TcgMeasureLaunchOfFirmwareDebugger (
   VOID
   )
 {
@@ -2396,8 +2381,10 @@ MeasureSecureBootPolicy (
   // There might be a case that we need measure UEFI image from DriverOrder, besides BootOrder. So
   // the Authority measurement happen before ReadToBoot event.
   //
-  Status = MeasureSeparatorEvent (7);
-  DEBUG ((DEBUG_INFO, "MeasureSeparatorEvent - %r\n", Status));
+  if (mTcgDxeData.BsCap.TPMPresentFlag) {
+    Status = MeasureSeparatorEvent (7);
+    DEBUG ((DEBUG_INFO, "MeasureSeparatorEvent - %r\n", Status));
+  }
   return;
 }
 
@@ -2417,8 +2404,7 @@ OnReadyToBoot (
   IN      VOID       *Context
   )
 {
-  EFI_STATUS    Status;
-  TPM_PCRINDEX  PcrIndex;
+  EFI_STATUS  Status;
 
   PERF_START_EX (mImageHandle, "EventRec", "Tcg2Dxe", 0, PERF_ID_TCG2_DXE);
   if (mBootAttempts == 0) {
@@ -2441,7 +2427,7 @@ OnReadyToBoot (
     //
     // 1. This is the first boot attempt.
     //
-    Status = TcgMeasureAction (
+    Status = MeasureAction (
                4,
                EFI_CALLING_EFI_APPLICATION
                );
@@ -2453,12 +2439,7 @@ OnReadyToBoot (
     // 2. Draw a line between pre-boot env and entering post-boot env.
     // PCR[7] is already done.
     //
-    for (PcrIndex = 0; PcrIndex < 7; PcrIndex++) {
-      Status = MeasureSeparatorEvent (PcrIndex);
-      if (EFI_ERROR (Status)) {
-        DEBUG ((DEBUG_ERROR, "Separator Event not Measured. Error!\n"));
-      }
-    }
+    MeasureSeparators ();
 
     //
     // 3. Measure GPT. It would be done in SAP driver.
@@ -2475,7 +2456,7 @@ OnReadyToBoot (
     //
     // 6. Not first attempt, meaning a return from last attempt
     //
-    Status = TcgMeasureAction (
+    Status = MeasureAction (
                4,
                EFI_RETURNING_FROM_EFI_APPLICATION
                );
@@ -2487,7 +2468,7 @@ OnReadyToBoot (
     // 7. Next boot attempt, measure "Calling EFI Application from Boot Option" again
     // TCG PC Client PFP spec Section 2.4.4.5 Step 4
     //
-    Status = TcgMeasureAction (
+    Status = MeasureAction (
                4,
                EFI_CALLING_EFI_APPLICATION
                );
@@ -2525,7 +2506,7 @@ OnExitBootServices (
   //
   // Measure invocation of ExitBootServices,
   //
-  Status = TcgMeasureAction (
+  Status = MeasureAction (
              5,
              EFI_EXIT_BOOT_SERVICES_INVOCATION
              );
@@ -2536,7 +2517,7 @@ OnExitBootServices (
   //
   // Measure success of ExitBootServices
   //
-  Status = TcgMeasureAction (
+  Status = MeasureAction (
              5,
              EFI_EXIT_BOOT_SERVICES_SUCCEEDED
              );
@@ -2566,7 +2547,7 @@ OnExitBootServicesFailed (
   //
   // Measure Failure of ExitBootServices,
   //
-  Status = TcgMeasureAction (
+  Status = MeasureAction (
              5,
              EFI_EXIT_BOOT_SERVICES_FAILED
              );
@@ -2659,33 +2640,18 @@ InstallTcg2 (
   return Status;
 }
 
-/**
-  The driver's entry point. It publishes EFI Tcg2 Protocol.
-
-  @param[in] ImageHandle  The firmware allocated handle for the EFI image.
-  @param[in] SystemTable  A pointer to the EFI System Table.
-
-  @retval EFI_SUCCESS     The entry point is executed successfully.
-  @retval other           Some error occurs when executing this entry point.
-**/
 EFI_STATUS
-EFIAPI
-DriverEntry (
-  IN    EFI_HANDLE        ImageHandle,
-  IN    EFI_SYSTEM_TABLE  *SystemTable
+Tcg2DxeInitializeTpm (
+  VOID
   )
 {
   EFI_STATUS                       Status;
-  EFI_EVENT                        Event;
-  VOID                             *Registration;
   UINT32                           MaxCommandSize;
   UINT32                           MaxResponseSize;
   UINTN                            Index;
   EFI_TCG2_EVENT_ALGORITHM_BITMAP  TpmHashAlgorithmBitmap;
   UINT32                           ActivePCRBanks;
   UINT32                           NumberOfPCRBanks;
-
-  mImageHandle = ImageHandle;
 
   if (CompareGuid (PcdGetPtr (PcdTpmInstanceGuid), &gEfiTpmDeviceInstanceNoneGuid) ||
       CompareGuid (PcdGetPtr (PcdTpmInstanceGuid), &gEfiTpmDeviceInstanceTpm12Guid))
@@ -2790,13 +2756,72 @@ DriverEntry (
   DEBUG ((DEBUG_INFO, "Tcg2.NumberOfPCRBanks      - 0x%08x\n", mTcgDxeData.BsCap.NumberOfPCRBanks));
   DEBUG ((DEBUG_INFO, "Tcg2.ActivePcrBanks        - 0x%08x\n", mTcgDxeData.BsCap.ActivePcrBanks));
 
-  if (mTcgDxeData.BsCap.TPMPresentFlag) {
+  return EFI_SUCCESS;
+}
+
+/**
+  The driver's entry point. It publishes EFI Tcg2 Protocol.
+
+  @param[in] ImageHandle  The firmware allocated handle for the EFI image.
+  @param[in] SystemTable  A pointer to the EFI System Table.
+
+  @retval EFI_SUCCESS     The entry point is executed successfully.
+  @retval other           Some error occurs when executing this entry point.
+**/
+EFI_STATUS
+EFIAPI
+DriverEntry (
+  IN    EFI_HANDLE        ImageHandle,
+  IN    EFI_SYSTEM_TABLE  *SystemTable
+  )
+{
+  EFI_STATUS  Status;
+  EFI_EVENT   Event;
+  VOID        *Registration;
+
+  mImageHandle = ImageHandle;
+
+  Status = Tcg2DxeInitializeTdx ();
+
+  if (Status == EFI_SUCCESS) {
+    //
+    // Setup the log area and copy event log from hob list to it
+    //
+    Status = TdSetupEventLog ();
+    ASSERT_EFI_ERROR (Status);
+    Status = TdSyncEvent ();
+    ASSERT_EFI_ERROR (Status);
+
+    MeasureAction                   = TdMeasureAction;
+    MeasureSeparators               = TdMeasureSeparatorEvents;
+    MeasureHandoffTables            = TdMeasureHandoffTables;
+    MeasureVariable                 = TdMeasureVariable;
+    MeasureLaunchOfFirmwareDebugger = TdMeasureLaunchOfFirmwareDebugger;
+
+    mTcgDxeData.BsCap.TPMPresentFlag = FALSE;
+  } else {
+    //
+    // TDX is not detected. So we try to initialize TPM.
+    //
+    Status = Tcg2DxeInitializeTpm ();
+    if (EFI_ERROR (Status)) {
+      return Status;
+    }
+
     //
     // Setup the log area and copy event log from hob list to it
     //
     Status = SetupEventLog ();
     ASSERT_EFI_ERROR (Status);
 
+    MeasureAction                   = TcgMeasureAction;
+    MeasureSeparators               = TcgMeasureSeparatorEvents;
+    MeasureHandoffTables            = TcgMeasureHandoffTables;
+    MeasureVariable                 = TcgMeasureVariable;
+    MeasureLaunchOfFirmwareDebugger = TcgMeasureLaunchOfFirmwareDebugger;
+  }
+
+  if (mTcgDxeData.BsCap.TPMPresentFlag || TdIsEnabled ()) {
     //
     // Measure handoff tables, Boot#### variables etc.
     //
@@ -2842,10 +2867,21 @@ DriverEntry (
   }
 
   //
-  // Install Tcg2Protocol
+  // Install Tcg2Protocol or CcMeasurementProtocol
   //
-  Status = InstallTcg2 ();
-  DEBUG ((DEBUG_INFO, "InstallTcg2 - %r\n", Status));
+  if (mTcgDxeData.BsCap.TPMPresentFlag) {
+    Status = InstallTcg2 ();
+    DEBUG ((DEBUG_INFO, "InstallTcg2 - %r\n", Status));
+  } else if (TdIsEnabled ()) {
+    Status = TdInstallCcMeasurement ();
+    DEBUG ((DEBUG_INFO, "InstallCcMeasurement - %r\n", Status));
+    if (Status == EFI_SUCCESS) {
+      //
+      // Create event callback to install CC EventLog ACPI Table
+      //
+      EfiCreateProtocolNotifyEvent (&gEfiAcpiTableProtocolGuid, TPL_CALLBACK, TdInstallAcpiTable, NULL, &Registration);
+    }
+  }
 
   return Status;
 }

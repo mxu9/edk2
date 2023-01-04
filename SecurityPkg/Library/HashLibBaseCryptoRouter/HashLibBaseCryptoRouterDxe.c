@@ -16,6 +16,7 @@ SPDX-License-Identifier: BSD-2-Clause-Patent
 #include <Library/MemoryAllocationLib.h>
 #include <Library/PcdLib.h>
 #include <Library/HashLib.h>
+#include <Library/TdxLib.h>
 
 #include "HashLibBaseCryptoRouterCommon.h"
 
@@ -175,10 +176,20 @@ HashCompleteAndExtend (
 
   FreePool (HashCtx);
 
-  Status = Tpm2PcrExtend (
-             PcrIndex,
-             DigestList
-             );
+  if (TdIsEnabled ()) {
+    ASSERT (DigestList->count == 1 && DigestList->digests[0].hashAlg == TPM_ALG_SHA384);
+
+    Status = TdExtendRtmr (
+               (UINT32 *)DigestList->digests[0].digest.sha384,
+               SHA384_DIGEST_SIZE,
+               (UINT8)PcrIndex
+               );
+  } else {
+    Status = Tpm2PcrExtend (
+               PcrIndex,
+               DigestList
+               );
+  }
   return Status;
 }
 

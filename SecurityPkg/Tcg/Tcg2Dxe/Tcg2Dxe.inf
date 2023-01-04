@@ -38,6 +38,7 @@
 
 [Sources]
   Tcg2Dxe.c
+  IntelTdx.c
   MeasureBootPeCoff.c
 
 [Packages]
@@ -87,12 +88,17 @@
   gTpm2StartupLocalityHobGuid                        ## SOMETIMES_CONSUMES  ## HOB
   gTcg800155PlatformIdEventHobGuid                   ## SOMETIMES_CONSUMES  ## HOB
 
+  gCcEventEntryHobGuid                               ## SOMETIMES_CONSUMES  ## HOB
+  gEfiCcFinalEventsTableGuid                         ## PRODUCES
+
 [Protocols]
   gEfiTcg2ProtocolGuid                               ## PRODUCES
   gEfiTcg2FinalEventsTableGuid                       ## PRODUCES
   gEfiMpServiceProtocolGuid                          ## SOMETIMES_CONSUMES
   gEfiVariableWriteArchProtocolGuid                  ## NOTIFY
   gEfiResetNotificationProtocolGuid                  ## CONSUMES
+  gEfiCcMeasurementProtocolGuid                      ## PRODUCES
+  gEfiAcpiTableProtocolGuid                          ## NOTIFY
 
 [Pcd]
   gEfiSecurityPkgTokenSpaceGuid.PcdTpmPlatformClass                         ## SOMETIMES_CONSUMES
@@ -107,6 +113,13 @@
   gEfiSecurityPkgTokenSpaceGuid.PcdTpm2AcpiTableLaml                        ## PRODUCES
   gEfiSecurityPkgTokenSpaceGuid.PcdTpm2AcpiTableLasa                        ## PRODUCES
   gEfiMdeModulePkgTokenSpaceGuid.PcdTcgPfpMeasurementRevision               ## CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdAcpiDefaultOemId                        ## CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdAcpiDefaultOemTableId                   ## CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdAcpiDefaultOemRevision                  ## CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdAcpiDefaultCreatorId                    ## CONSUMES
+  gEfiMdeModulePkgTokenSpaceGuid.PcdAcpiDefaultCreatorRevision              ## CONSUMES
+  gEfiSecurityPkgTokenSpaceGuid.PcdCcEventlogAcpiTableLaml                  ## PRODUCES
+  gEfiSecurityPkgTokenSpaceGuid.PcdCcEventlogAcpiTableLasa                  ## PRODUCES
 
 [Depex]
   # According to PcdTpm2AcpiTableRev definition in SecurityPkg.dec

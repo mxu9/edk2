@@ -42,6 +42,7 @@
   Tpm2CommandLib
   MemoryAllocationLib
   PcdLib
+  TdxLib
 
 [Pcd]
   gEfiSecurityPkgTokenSpaceGuid.PcdTpm2HashMask             ## CONSUMES

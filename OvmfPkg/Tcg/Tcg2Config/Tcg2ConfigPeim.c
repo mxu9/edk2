@@ -51,6 +51,12 @@ Tcg2ConfigPeimEntryPoint (
 
   DEBUG ((DEBUG_INFO, "%a\n", __FUNCTION__));
 
+  if (TdIsEnabled ()) {
+      Status = PeiServicesInstallPpi (&mTpmInitializationDonePpiList);
+      ASSERT_EFI_ERROR (Status);
+      goto SelectionDone;
+  }
+
   Status = InternalTpm12Detect ();
   if (!EFI_ERROR (Status)) {
     DEBUG ((DEBUG_INFO, "%a: TPM1.2 detected\n", __FUNCTION__));
@@ -89,6 +95,7 @@ Tcg2ConfigPeimEntryPoint (
   //
   // Selection done
   //
+SelectionDone:
   Status = PeiServicesInstallPpi (&mTpmSelectedPpi);
   ASSERT_EFI_ERROR (Status);
 

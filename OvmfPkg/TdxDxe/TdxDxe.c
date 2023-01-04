@@ -28,6 +28,7 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <ConfidentialComputingGuestAttr.h>
 #include <IndustryStandard/Tdx.h>
+#include <IndustryStandard/Tpm20.h>
 #include <Library/PlatformInitLib.h>
 #include <Library/TdxLib.h>
 #include <TdxAcpiTable.h>
@@ -357,6 +358,15 @@ TdxDxeEntryPoint (
   }
 
   SetMmioSharedBit ();
+
+  //
+  // Set PcdTpm2HashMask as HASH_ALG_SHA384 because in current stage TDX
+  // measurement supports SHA384 only.
+  //
+  PcdStatus = PcdSet32S (PcdTpm2HashMask, HASH_ALG_SHA384);
+  ASSERT_RETURN_ERROR (PcdStatus);
+  PcdStatus = PcdSet32S (PcdTcg2HashAlgorithmBitmap, HASH_ALG_SHA384);
+  ASSERT_RETURN_ERROR (PcdStatus);
 
   //
   // It is Td guest, we install gEfiMpInitLibUpDepProtocolGuid so that
