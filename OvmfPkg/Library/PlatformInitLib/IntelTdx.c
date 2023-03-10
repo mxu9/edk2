@@ -52,7 +52,7 @@ BuildResourceDescriptorHobForUnacceptedMemory (
   // In the first stage of lazy-accept, all the memory under 4G will be accepted.
   // The memory above 4G will not be accepted.
   //
-  MaxAcceptedMemoryAddress = BASE_4GB;
+  MaxAcceptedMemoryAddress = MAX_UINT64;
 
   if (PhysicalEnd <= MaxAcceptedMemoryAddress) {
     //

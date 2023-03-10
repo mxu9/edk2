@@ -415,12 +415,10 @@ AcceptMemory (
   EFI_PHYSICAL_ADDRESS  AcceptMemoryEndAddress;
 
   Status                 = EFI_SUCCESS;
-  AcceptMemoryEndAddress = BASE_4GB;
+  AcceptMemoryEndAddress = 0;
 
   ASSERT (VmmHobList != NULL);
   Hob.Raw = (UINT8 *)VmmHobList;
-
-  DEBUG ((DEBUG_INFO, "AcceptMemory under address of 4G\n"));
 
   //
   // Parse the HOB list until end of list or matching type is found.
@@ -437,21 +435,13 @@ AcceptMemory (
           continue;
         }
 
-        if (PhysicalStart >= AcceptMemoryEndAddress) {
-          // this memory region is not to be accepted. And we're done.
-          break;
-        }
+        AcceptMemoryEndAddress = PhysicalEnd;
 
         if (PhysicalStart >= PhysicalAddressStart) {
           // this memory region has not been acceted.
         } else if ((PhysicalStart < PhysicalAddressStart) && (PhysicalEnd > PhysicalAddressStart)) {
           // part of the memory region has been accepted.
           PhysicalStart = PhysicalAddressStart;
-        }
-
-        // then compare the PhysicalEnd with AcceptMemoryEndAddress
-        if (PhysicalEnd >= AcceptMemoryEndAddress) {
-          PhysicalEnd = AcceptMemoryEndAddress;
         }
 
         DEBUG ((DEBUG_INFO, "ResourceAttribute: 0x%x\n", Hob.ResourceDescriptor->ResourceAttribute));
@@ -484,6 +474,8 @@ AcceptMemory (
 
     Hob.Raw = GET_NEXT_HOB (Hob);
   }
+
+  DEBUG ((DEBUG_INFO, "AcceptMemoryEndAddress = 0x%llx\n", AcceptMemoryEndAddress));
 
   return Status;
 }
