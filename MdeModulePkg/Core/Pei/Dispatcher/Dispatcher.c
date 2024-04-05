@@ -663,6 +663,42 @@ PeiCoreEntry (
   PeiCore (SecCoreData, NULL, Private);
 }
 
+//
+// Hacky workaround:
+// The GCC5 configuration enables LTO.
+// The right fix is to modify TemporaryRamMigration() and use SwitchStack().
+//
+// TemporaryRamSupportPpi->TemporaryRamMigration() in PeiCheckAndSwitchStack()
+// switches the stack, updates the stack pointer and the frame pointer, and
+// returns back to the caller.  It may not preserve variables in the function
+// scope.  SecCoreDAta and Private can be stale value.
+//
+//
+#if defined(__GNUC__) && (__GNUC__ >= 5)
+# define EXTERNALLY_VISIBLE     __attribute__((__externally_visible__))
+#else
+# define EXTERNALLY_VISIBLE
+#endif
+
+CONST EFI_SEC_PEI_HAND_OFF *gSecCoreData EXTERNALLY_VISIBLE;
+PEI_CORE_INSTANCE *gPrivate EXTERNALLY_VISIBLE;
+
+VOID EXTERNALLY_VISIBLE
+PeiCoreAfterSwitchStack (void)
+{
+      //
+      // Migrate memory pages allocated in pre-memory phase.
+      // It could not be called before calling TemporaryRamSupportPpi->TemporaryRamMigration()
+      // as the migrated memory pages may be overridden by TemporaryRamSupportPpi->TemporaryRamMigration().
+      //
+      MigrateMemoryPages (gPrivate, TRUE);
+
+      //
+      // Entry PEI Phase 2
+      //
+      PeiCore (gSecCoreData, NULL, gPrivate);
+}
+
 /**
   Check SwitchStackSignal and switch stack if SwitchStackSignal is TRUE.
 
@@ -849,6 +885,13 @@ PeiCheckAndSwitchStack (
       }
 
       //
+      // WORKAROUND:
+      // TemporarlyRamMigration() switches stack. Don't use local variables.
+      //
+      gSecCoreData = SecCoreData;
+      gPrivate = Private;
+
+      //
       // Temporary Ram Support PPI is provided by platform, it will copy
       // temporary memory to permanent memory and do stack switching.
       // After invoking Temporary Ram Support PPI, the following code's
@@ -861,17 +904,7 @@ PeiCheckAndSwitchStack (
                                 TemporaryRamSize
                                 );
 
-      //
-      // Migrate memory pages allocated in pre-memory phase.
-      // It could not be called before calling TemporaryRamSupportPpi->TemporaryRamMigration()
-      // as the migrated memory pages may be overridden by TemporaryRamSupportPpi->TemporaryRamMigration().
-      //
-      MigrateMemoryPages (Private, TRUE);
-
-      //
-      // Entry PEI Phase 2
-      //
-      PeiCore (SecCoreData, NULL, Private);
+      PeiCoreAfterSwitchStack();
     } else {
       //
       // Migrate memory pages allocated in pre-memory phase.
