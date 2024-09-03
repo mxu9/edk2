@@ -311,6 +311,10 @@ InitializePlatform (
   DEBUG ((DEBUG_INFO, "Platform PEIM Loaded\n"));
   PlatformInfoHob = BuildPlatformInfoHob ();
 
+  if (EFI_ERROR (PlatformInitFwCfgCachedItems ())) {
+    DEBUG ((DEBUG_ERROR, "PlatformInitFwCfgCachedItems Failed!\n"));
+  }
+
   PlatformInfoHob->SmmSmramRequire     = FeaturePcdGet (PcdSmmSmramRequire);
   PlatformInfoHob->SevEsIsEnabled      = MemEncryptSevEsIsEnabled ();
   PlatformInfoHob->PcdPciMmio64Size    = PcdGet64 (PcdPciMmio64Size);
