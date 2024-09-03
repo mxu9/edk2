@@ -29,6 +29,8 @@ STATIC BOOLEAN  mQemuFwCfgDmaSupported;
 
 STATIC EDKII_IOMMU_PROTOCOL  *mIoMmuProtocol;
 
+STATIC FW_CFG_SELECT_INFO  mFwCfgSelectInfo = {0};
+
 /**
   Returns a boolean indicating if the firmware configuration interface
   is available or not.
@@ -111,6 +113,25 @@ QemuFwCfgInitialize (
   }
 
   return RETURN_SUCCESS;
+}
+
+/**
+  Get the pointer to the FW_CFG_SELECT_INFO. This data is used as the
+  workarea to record the onging fw_cfg item and offset.
+
+  @retval   FW_CFG_SELECT_INFO  Pointer to the FW_CFG_SELECT_INFO
+  @retval   NULL                FW_CFG_SELECT_INFO doesn't exist
+**/
+FW_CFG_SELECT_INFO *
+QemuFwCfgCacheGetSelectInfo(
+  VOID
+)
+{
+  if(!QemuFwCfgCacheEnable ()) {
+    return NULL;
+  }
+
+  return &mFwCfgSelectInfo;
 }
 
 /**

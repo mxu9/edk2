@@ -14,6 +14,7 @@
 #include <Library/BaseLib.h>
 #include <Library/DebugLib.h>
 #include <Library/QemuFwCfgLib.h>
+#include <PiPei.h>
 
 #include "QemuFwCfgLibInternal.h"
 
@@ -118,4 +119,27 @@ InternalQemuFwCfgDmaBytes (
   //
   ASSERT (FALSE);
   CpuDeadLoop ();
+}
+
+/**
+  Get the pointer to the FW_CFG_SELECT_INFO. This data is used as the
+  workarea to record the onging fw_cfg item and offset.
+
+  @retval   FW_CFG_SELECT_INFO  Pointer to the FW_CFG_SELECT_INFO
+  @retval   NULL                FW_CFG_SELECT_INFO doesn't exist
+**/
+FW_CFG_SELECT_INFO*
+QemuFwCfgCacheGetSelectInfo(
+  VOID
+)
+{
+  EFI_HOB_GUID_TYPE  *GuidHob;
+  if(!QemuFwCfgCacheEnable ()) {
+    return NULL;
+  }
+
+  GuidHob = GetFirstGuidHob (&gOvmfFwCfgInfoHobGuid);
+  ASSERT(GuidHob);
+
+  return (FW_CFG_SELECT_INFO *)(VOID *)GET_GUID_HOB_DATA (GuidHob);
 }
