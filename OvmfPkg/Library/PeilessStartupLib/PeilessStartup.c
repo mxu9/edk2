@@ -47,6 +47,10 @@ InitializePlatform (
   DEBUG ((DEBUG_INFO, "InitializePlatform in Pei-less boot\n"));
   PlatformDebugDumpCmos ();
 
+  if (EFI_ERROR (PlatformInitFwCfgCachedItems ())) {
+    DEBUG ((DEBUG_ERROR, "PlatformInitFwCfgCachedItems Failed! \n"));
+  }
+
   PlatformInfoHob->DefaultMaxCpuNumber = 64;
   PlatformInfoHob->PcdPciMmio64Size    = 0x800000000;
 
