@@ -22,6 +22,8 @@
 #include <Library/QemuFwCfgLib.h>
 #include <Library/QemuFwCfgSimpleParserLib.h>
 #include <Library/TdxHelperLib.h>
+#include <Library/TpmMeasurementLib.h>
+#include <IndustryStandard/UefiTcgPlatform.h>
 
 #define EV_POSTCODE_INFO_QEMU_FW_CFG_DATA  "QEMU FW CFG"
 #define QEMU_FW_CFG_SIZE                   sizeof (EV_POSTCODE_INFO_QEMU_FW_CFG_DATA)
@@ -95,6 +97,7 @@ CacheFwCfgInfoHobWithOptionalMeasurement (
   EFI_STATUS          Status;
   FW_CFG_CACHED_ITEM  *CachedItem;
   UINT8               *ItemData;
+  UINT32              PcrIndex;
 
   if ((FileName == NULL) || (Buffer == NULL)) {
     return EFI_INVALID_PARAMETER;
@@ -116,22 +119,39 @@ CacheFwCfgInfoHobWithOptionalMeasurement (
     return Status;
   }
 
-  if (TdIsEnabled ()) {
-    FW_CFG_EVENT  FwCfgEvent;
-    ZeroMem (&FwCfgEvent, sizeof (FW_CFG_EVENT));
-    CopyMem (&FwCfgEvent.FwCfg, EV_POSTCODE_INFO_QEMU_FW_CFG_DATA, sizeof (EV_POSTCODE_INFO_QEMU_FW_CFG_DATA));
-    CopyMem (&FwCfgEvent.FwCfgFileName, FileName, QEMU_FW_CFG_FNAME_SIZE);
+  PcrIndex = 1;
+  FW_CFG_EVENT  FwCfgEvent;
+  ZeroMem (&FwCfgEvent, sizeof (FW_CFG_EVENT));
+  CopyMem (&FwCfgEvent.FwCfg, EV_POSTCODE_INFO_QEMU_FW_CFG_DATA, sizeof (EV_POSTCODE_INFO_QEMU_FW_CFG_DATA));
+  CopyMem (&FwCfgEvent.FwCfgFileName, FileName, QEMU_FW_CFG_FNAME_SIZE);
 
-    Status = TdxHelperMeasureFwCfgData (
-                                        (VOID *)&FwCfgEvent,
-                                        sizeof (FwCfgEvent),
-                                        (VOID *)ItemData,
-                                        Size
-                                        );
-    if (EFI_ERROR (Status)) {
-      DEBUG ((DEBUG_ERROR, "TdxHelperMeasureFwCfgData failed with %r\n", Status));
-    }
+  Status = TpmMeasureAndLogData (
+                                PcrIndex,
+                                EV_PLATFORM_CONFIG_FLAGS,
+                                (VOID *)&FwCfgEvent,
+                                sizeof(FwCfgEvent),
+                                (VOID *)ItemData,
+                                Size);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "TpmMeasureAndLogData failed with %r\n", Status));
   }
+
+  // if (TdIsEnabled ()) {
+  //   FW_CFG_EVENT  FwCfgEvent;
+  //   ZeroMem (&FwCfgEvent, sizeof (FW_CFG_EVENT));
+  //   CopyMem (&FwCfgEvent.FwCfg, EV_POSTCODE_INFO_QEMU_FW_CFG_DATA, sizeof (EV_POSTCODE_INFO_QEMU_FW_CFG_DATA));
+  //   CopyMem (&FwCfgEvent.FwCfgFileName, FileName, QEMU_FW_CFG_FNAME_SIZE);
+
+  //   Status = TdxHelperMeasureFwCfgData (
+  //                                       (VOID *)&FwCfgEvent,
+  //                                       sizeof (FwCfgEvent),
+  //                                       (VOID *)ItemData,
+  //                                       Size
+  //                                       );
+  //   if (EFI_ERROR (Status)) {
+  //     DEBUG ((DEBUG_ERROR, "TdxHelperMeasureFwCfgData failed with %r\n", Status));
+  //   }
+  // }
 
   return Status;
 }

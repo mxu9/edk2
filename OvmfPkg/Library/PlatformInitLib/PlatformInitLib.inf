@@ -41,6 +41,7 @@
   MdePkg/MdePkg.dec
   OvmfPkg/OvmfPkg.dec
   UefiCpuPkg/UefiCpuPkg.dec
+  SecurityPkg/SecurityPkg.dec
 
 [LibraryClasses]
   BaseLib
@@ -54,6 +55,7 @@
   PcdLib
   PciLib
   PeiHardwareInfoLib
+  TpmMeasurementLib
 
 [LibraryClasses.X64]
   TdxLib
